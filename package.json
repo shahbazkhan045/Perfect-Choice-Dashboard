@@ -1,0 +1,31 @@
+{
+  "name": "perfect-choice-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Justlife x Perfect Choice — daily cash collection and cancellation confirmation dashboard",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "tokens": "node scripts/generate-tokens.mjs",
+    "check": "node --env-file=.env.local scripts/check-sheet.mjs"
+  },
+  "dependencies": {
+    "@vercel/blob": "^0.27.0",
+    "google-auth-library": "^9.15.0",
+    "googleapis": "^144.0.0",
+    "next": "^15.1.6",
+    "nodemailer": "^9.0.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "resend": "^4.1.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "@types/nodemailer": "^8.0.1",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "typescript": "^5.7.3"
+  }
+}
