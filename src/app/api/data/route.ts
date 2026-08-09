@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const role = await requireRole();
-    const { cash, canx } = await readWorkbook();
+    const { cash, canx, canxTotalPct } = await readWorkbook();
     const today = todayIso();
 
     const payload: DashboardData = {
@@ -26,6 +26,7 @@ export async function GET() {
       syncedAt: nowStamp(),
       cash,
       canx,
+      canxTotalPct,
     };
 
     return NextResponse.json(payload, {
