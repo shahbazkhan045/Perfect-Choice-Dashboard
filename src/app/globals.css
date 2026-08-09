@@ -1004,6 +1004,66 @@ tr.is-saving {
   color: var(--muted);
 }
 
+.reason-editor {
+  display: flex;
+  flex-direction: column;
+}
+
+.reason-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.reason-unsaved {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--warn);
+  margin-right: auto;
+}
+
+.reason-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  flex: none;
+}
+
+.reason-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.reason-btn-save {
+  background: var(--good);
+  color: #fff;
+}
+
+.reason-btn-save:hover:not(:disabled) {
+  background: var(--brand-ink);
+}
+
+.reason-btn-cancel {
+  background: var(--surface-2);
+  color: var(--text-2);
+  border-color: var(--border-strong);
+}
+
+.reason-btn-cancel:hover:not(:disabled) {
+  background: var(--bad-soft);
+  color: var(--bad);
+  border-color: var(--bad);
+}
+
 .reason-foot {
   display: flex;
   flex-wrap: wrap;

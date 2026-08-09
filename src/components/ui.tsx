@@ -190,7 +190,11 @@ export function Modal({
 }
 
 // ---------------------------------------------------------------------------
-// Debounced text area used for every free-text reason field
+// Text area used for every free-text reason field. Saves ONLY on explicit
+// submit — never while typing, never on blur, never on a timer. Typing used
+// to autosave on a debounce, which meant any natural pause mid-sentence
+// fired a save and re-rendered the row out from under the typist. Now
+// nothing reaches the server until the checkmark is clicked.
 // ---------------------------------------------------------------------------
 
 export function ReasonField({
@@ -205,40 +209,70 @@ export function ReasonField({
   onSave: (next: string) => void;
 }) {
   const [draft, setDraft] = useState(value);
-  const dirty = useRef(false);
+  const dirty = draft !== value;
 
-  // Adopt server-side changes, but never clobber what someone is mid-way typing.
+  // Adopt server-side changes only while there is nothing unsaved locally —
+  // an in-progress, not-yet-submitted edit is never overwritten.
   useEffect(() => {
-    if (!dirty.current) setDraft(value);
+    if (!dirty) setDraft(value);
+    // dirty is derived from draft itself; including it would re-run this on
+    // every keystroke and fight the very thing it's meant to protect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
-  useEffect(() => {
-    if (!dirty.current) return;
-    const t = setTimeout(() => {
-      dirty.current = false;
-      if (draft !== value) onSave(draft);
-    }, 900);
-    return () => clearTimeout(t);
-    // onSave is stable per row; value is the last committed server state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft]);
+  function submit() {
+    if (!dirty || disabled) return;
+    onSave(draft);
+  }
+
+  function discard() {
+    setDraft(value);
+  }
 
   return (
-    <textarea
-      className="reason-input"
-      value={draft}
-      placeholder={placeholder}
-      disabled={disabled}
-      rows={2}
-      onChange={(e) => {
-        dirty.current = true;
-        setDraft(e.target.value);
-      }}
-      onBlur={() => {
-        if (!dirty.current) return;
-        dirty.current = false;
-        if (draft !== value) onSave(draft);
-      }}
-    />
+    <div className="reason-editor">
+      <textarea
+        className="reason-input"
+        value={draft}
+        placeholder={placeholder}
+        disabled={disabled}
+        rows={2}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' && dirty) {
+            e.preventDefault();
+            discard();
+          } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            submit();
+          }
+        }}
+      />
+      {dirty ? (
+        <div className="reason-actions">
+          <span className="reason-unsaved">Unsaved</span>
+          <button
+            type="button"
+            className="reason-btn reason-btn-save"
+            onClick={submit}
+            disabled={disabled}
+            title="Save (Ctrl+Enter)"
+            aria-label="Save reason"
+          >
+            ✓
+          </button>
+          <button
+            type="button"
+            className="reason-btn reason-btn-cancel"
+            onClick={discard}
+            disabled={disabled}
+            title="Discard changes (Esc)"
+            aria-label="Discard changes"
+          >
+            ✕
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
