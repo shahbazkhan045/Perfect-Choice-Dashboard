@@ -57,6 +57,12 @@ export interface DashboardData {
   syncedAt: string;
   cash: CashRow[];
   canx: CanxRow[];
+  /**
+   * The team's own overall cancellation rate, hand-entered in the sheet —
+   * see readWorkbook() in lib/sheets.ts for exactly where. `null` until
+   * that row exists.
+   */
+  canxTotalPct: number | null;
 }
 
 export interface ReminderStats {

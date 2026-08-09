@@ -106,9 +106,10 @@ export default function CanxSection({
       <div className="kpi-row kpi-row-4">
         <Kpi label={`Cancellations & releases · ${scope}`} value={String(kpis.total)} />
         <Kpi
-          label={`Cancellation & release · ${scope}`}
-          value={`${kpis.pct.toFixed(2)}%`}
-          tone="warn"
+          label="Total cancellation rate"
+          value={data.canxTotalPct != null ? `${data.canxTotalPct.toFixed(2)}%` : '—'}
+          unit={data.canxTotalPct != null ? undefined : 'not set in sheet'}
+          tone={data.canxTotalPct != null ? 'warn' : 'plain'}
         />
         <Kpi
           label="Awaiting a reason"

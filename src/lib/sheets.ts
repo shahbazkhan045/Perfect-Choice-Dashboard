@@ -72,6 +72,11 @@ type Grid = unknown[][];
 function norm(s: unknown): string {
   return String(s ?? '')
     .toLowerCase()
+    // '%' must survive as a token, not just get stripped below — otherwise
+    // "Cancellation and Releases" and "Cancellation and Releases %" collide
+    // on the exact same normalized string and the header matcher silently
+    // picks whichever column comes first (the count, not the percent).
+    .replace(/%/g, 'pct')
     .replace(/[^a-z0-9]/g, '');
 }
 
@@ -328,7 +333,22 @@ function normaliseTicket(value: string): CashRow['ticket'] {
   return '';
 }
 
-export async function readWorkbook(): Promise<{ cash: CashRow[]; canx: CanxRow[] }> {
+export interface WorkbookResult {
+  cash: CashRow[];
+  canx: CanxRow[];
+  /**
+   * The true overall cancellation rate, maintained by hand in the LAST row of
+   * the Cancellations tab (columns A-E blank, column F holds the percentage —
+   * e.g. 0.38%). Per-row percentages in that same column are each ~100%,
+   * since a cancelled booking is trivially 100% cancelled; averaging those
+   * is a different, much less meaningful number than the real rate against
+   * all bookings, which only the team maintaining the sheet actually knows.
+   * `null` until that row exists.
+   */
+  canxTotalPct: number | null;
+}
+
+export async function readWorkbook(): Promise<WorkbookResult> {
   const wb = await fetchWorkbook();
   const responses = parseResponses(wb.responses.raw);
 
@@ -367,6 +387,8 @@ export async function readWorkbook(): Promise<{ cash: CashRow[]; canx: CanxRow[]
 
   // ---- Cancellations ----
   const canx: CanxRow[] = [];
+  let canxTotalPct: number | null = null;
+
   if (wb.canx.raw.length >= 2) {
     const idx = indexHeaders(wb.canx.raw[0], CANX_SPEC);
     if (idx.date < 0 || idx.code < 0) {
@@ -374,9 +396,26 @@ export async function readWorkbook(): Promise<{ cash: CashRow[]; canx: CanxRow[]
         `"${TABS.CANX}" needs at least a master date and "Appointment Code" column.`,
       );
     }
+
+    // The team's hand-maintained total row: last row of the sheet, every
+    // identifying column blank, only the percent column filled in. It's
+    // checked up front (rather than inline in the loop below) so the "is
+    // this the total row" rule lives in exactly one place.
+    const lastR = wb.canx.raw.length - 1;
+    const lastCode = clean(cell(wb.canx.raw, lastR, idx.code));
+    const lastDate = toIsoDate(cell(wb.canx.raw, lastR, idx.date));
+    const lastPctCell = idx.pct >= 0 ? cell(wb.canx.raw, lastR, idx.pct) : '';
+    const lastPctPresent = lastPctCell !== '' && lastPctCell !== null && lastPctCell !== undefined;
+
+    if (lastR >= 1 && !lastCode && !lastDate && lastPctPresent) {
+      canxTotalPct = toPercent(lastPctCell, cell(wb.canx.display, lastR, idx.pct));
+    }
+
     for (let r = 1; r < wb.canx.raw.length; r++) {
       const code = clean(cell(wb.canx.raw, r, idx.code));
       const date = toIsoDate(cell(wb.canx.raw, r, idx.date));
+      // Same emptiness test as the total row above — this is what keeps
+      // that row out of the table instead of showing up as a blank entry.
       if (!code && !date) continue;
 
       const cleaner = clean(cell(wb.canx.raw, r, idx.cleaner));
@@ -401,7 +440,7 @@ export async function readWorkbook(): Promise<{ cash: CashRow[]; canx: CanxRow[]
     }
   }
 
-  return { cash, canx };
+  return { cash, canx, canxTotalPct };
 }
 
 // ---------------------------------------------------------------------------
