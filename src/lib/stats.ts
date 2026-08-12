@@ -1,7 +1,14 @@
 import { daysBetween } from './parse';
 import type { AnyRow, CanxRow, CashRow, ReminderStats } from './types';
 
-export type FilterKey = 'yesterday' | 'pending' | 'updated' | 'mtd';
+/**
+ * 'financeComments' is a peer of the other four, but is content-filtered
+ * (which finance comments still need a reply) rather than date-filtered, and
+ * is rendered by an entirely different table. applyFilter() below never
+ * handles it — CashSection reads data.cash directly for that tab via
+ * financeCommentsRows().
+ */
+export type FilterKey = 'yesterday' | 'pending' | 'updated' | 'mtd' | 'financeComments';
 
 /**
  * A cash row is answered once a collection status exists. A cancellation row is
@@ -36,6 +43,9 @@ export function applyFilter<T extends AnyRow>(
   today: string,
   yesterday: string,
 ): FilterResult<T> {
+  // Handled entirely outside this function — see the FilterKey comment above.
+  if (filter === 'financeComments') return { rows: [] };
+
   if (filter === 'pending') {
     const rows = all.filter((r) => !isAnswered(r));
     rows.sort((a, b) => a.date.localeCompare(b.date) || rowLabel(a).localeCompare(rowLabel(b)));
@@ -138,6 +148,34 @@ export function cashKpis(rows: CashRow[]): CashKpis {
     answeredCount: collectedCount + notCollectedCount,
     totalCount: rows.length,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Finance comments
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether a cash row still needs the Perfect Choice team's reply on the
+ * "Finance comments" tab. Finance closes a row out by writing exactly "ok",
+ * or a note containing the whole word "paid" (e.g. "PAID by card, dashboard
+ * updated") once they've confirmed payment another way — those two are the
+ * only things that drop a row off the list; everything else, including a
+ * blank comment, still needs a response.
+ */
+export function needsFinanceResponse(row: CashRow): boolean {
+  const comment = row.financeComment.trim();
+  if (!comment) return true;
+  if (comment.toLowerCase() === 'ok') return false;
+  if (/\bpaid\b/i.test(comment)) return false;
+  return true;
+}
+
+/** Newest first, so the most recent finance activity surfaces at the top. */
+export function financeCommentsRows(cash: CashRow[]): CashRow[] {
+  return cash
+    .filter(needsFinanceResponse)
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date) || a.ref.localeCompare(b.ref));
 }
 
 export interface CanxKpis {

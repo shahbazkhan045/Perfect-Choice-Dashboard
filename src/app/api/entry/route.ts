@@ -63,6 +63,17 @@ export async function POST(req: NextRequest) {
       patch.screenshot = url;
     }
 
+    if ('financeResponse' in body) {
+      const financeResponse = String(body.financeResponse ?? '').trim();
+      if (section !== 'CASH') {
+        return failure('Only cash entries have a finance response.', 400);
+      }
+      if (financeResponse.length > MAX_REASON) {
+        return failure(`Please keep the response under ${MAX_REASON} characters.`, 400);
+      }
+      patch.financeResponse = financeResponse;
+    }
+
     if (!Object.keys(patch).length) {
       return failure('Nothing to update.', 400);
     }

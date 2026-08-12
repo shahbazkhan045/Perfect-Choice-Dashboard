@@ -14,6 +14,9 @@ const FILTER_TITLES: Record<FilterKey, string> = {
   pending: 'All pending',
   updated: 'Already updated',
   mtd: 'Month to date',
+  // Cash-only tab — CanxSection never sets `filter` to this, but FilterKey is
+  // shared, so every Record<FilterKey, …> here needs a value for it too.
+  financeComments: 'Finance comments',
 };
 
 interface Props extends SectionProps {

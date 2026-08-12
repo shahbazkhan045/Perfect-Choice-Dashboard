@@ -47,14 +47,18 @@ export function Filters({
   value,
   counts,
   onChange,
+  extraTabs,
 }: {
   value: FilterKey;
-  counts: Record<FilterKey, number>;
+  counts: Partial<Record<FilterKey, number>>;
   onChange: (f: FilterKey) => void;
+  /** Additional tabs appended after the standard four — e.g. Cash's "Finance comments". */
+  extraTabs?: { key: FilterKey; label: string }[];
 }) {
+  const tabs = extraTabs?.length ? [...FILTERS, ...extraTabs] : FILTERS;
   return (
     <div className="filters" role="tablist" aria-label="Date filter">
-      {FILTERS.map((f) => (
+      {tabs.map((f) => (
         <button
           key={f.key}
           type="button"
@@ -64,7 +68,7 @@ export function Filters({
           onClick={() => onChange(f.key)}
         >
           {f.label}
-          <span className="filter-count">{counts[f.key]}</span>
+          <span className="filter-count">{counts[f.key] ?? 0}</span>
         </button>
       ))}
     </div>

@@ -942,6 +942,13 @@ tr.is-saving {
   width: 30%;
 }
 
+.finance-comment {
+  margin: 0 0 4px;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
 .table-msg {
   text-align: center;
   color: var(--muted);

@@ -23,6 +23,16 @@ export interface CashRow {
   status: CashStatus;
   ticket: TicketRaised;
   reason: string;
+  /**
+   * Read-only. The finance team's own note, typed directly into the sheet's
+   * "Finance Comments" column — never written by this app.
+   */
+  financeComment: string;
+  /**
+   * Writable. The Perfect Choice team's reply to that finance comment —
+   * "Yes" if it turned out to be collected, or the reason it wasn't.
+   */
+  financeResponse: string;
   updatedBy: string;
   updatedAt: string;
 }

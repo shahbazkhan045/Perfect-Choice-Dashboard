@@ -120,6 +120,10 @@ const CASH_SPEC = {
   status: ['Status', 'Collection Status'],
   ticket: ['Ticket Raised?', 'Ticket Raised', 'Ticket'],
   reason: ['Reason', 'Remarks'],
+  // Finance's own column — read, never written, by this app.
+  financeComment: ['Finance Comments', 'Finance Comment'],
+  // The Perfect Choice team's reply to that comment — see ensureFinanceResponseColumn().
+  financeResponse: ['Perfect Choice Response', 'PC Response', 'Finance Response'],
   updatedBy: ['Updated By'],
   updatedAt: ['Updated At'],
 };
@@ -144,6 +148,7 @@ const RESP_SPEC = {
   ticket: ['Ticket Raised', 'Ticket Raised?'],
   reason: ['Reason'],
   screenshot: ['Screenshot URL', 'Screenshot'],
+  financeResponse: ['Finance Response', 'Perfect Choice Response'],
   updatedBy: ['Updated By'],
   updatedAt: ['Updated At'],
 };
@@ -155,6 +160,7 @@ export const RESPONSE_HEADERS = [
   'Ticket Raised',
   'Reason',
   'Screenshot URL',
+  'Finance Response',
   'Updated By',
   'Updated At',
 ];
@@ -247,6 +253,7 @@ interface ResponseEntry {
   ticket: string;
   reason: string;
   screenshot: string;
+  financeResponse: string;
   updatedBy: string;
   updatedAt: string;
 }
@@ -307,6 +314,7 @@ function parseResponses(grid: Grid): Map<string, ResponseEntry> {
       ticket: idx.ticket >= 0 ? clean(row[idx.ticket]) : '',
       reason: idx.reason >= 0 ? clean(row[idx.reason]) : '',
       screenshot: idx.screenshot >= 0 ? clean(row[idx.screenshot]) : '',
+      financeResponse: idx.financeResponse >= 0 ? clean(row[idx.financeResponse]) : '',
       updatedBy: idx.updatedBy >= 0 ? clean(row[idx.updatedBy]) : '',
       updatedAt: idx.updatedAt >= 0 ? formatStampCell(row[idx.updatedAt]) : '',
     });
@@ -379,6 +387,10 @@ export async function readWorkbook(): Promise<WorkbookResult> {
         status: normaliseStatus(resp?.status ?? clean(cell(wb.cash.raw, r, idx.status))),
         ticket: normaliseTicket(resp?.ticket ?? clean(cell(wb.cash.raw, r, idx.ticket))),
         reason: resp?.reason || clean(cell(wb.cash.raw, r, idx.reason)),
+        // Finance's own note — always read straight from the sheet. Nothing
+        // in _Responses ever overrides it; this app never writes this column.
+        financeComment: clean(cell(wb.cash.raw, r, idx.financeComment)),
+        financeResponse: resp?.financeResponse || clean(cell(wb.cash.raw, r, idx.financeResponse)),
         updatedBy: resp?.updatedBy || clean(cell(wb.cash.raw, r, idx.updatedBy)),
         updatedAt: resp?.updatedAt || clean(cell(wb.cash.display, r, idx.updatedAt)),
       });
@@ -452,6 +464,7 @@ export interface EntryPatch {
   ticket?: string;
   reason?: string;
   screenshot?: string;
+  financeResponse?: string;
 }
 
 export interface SaveResult {
@@ -460,6 +473,7 @@ export interface SaveResult {
   ticket: string;
   reason: string;
   screenshot: string;
+  financeResponse: string;
   updatedBy: string;
   updatedAt: string;
 }
@@ -499,6 +513,7 @@ export async function saveEntry(args: {
     ticket: existing?.ticket ?? '',
     reason: existing?.reason ?? '',
     screenshot: existing?.screenshot ?? '',
+    financeResponse: existing?.financeResponse ?? '',
   };
 
   const next = {
@@ -506,6 +521,8 @@ export async function saveEntry(args: {
     ticket: patch.ticket !== undefined ? clean(patch.ticket) : before.ticket,
     reason: patch.reason !== undefined ? clean(patch.reason) : before.reason,
     screenshot: patch.screenshot !== undefined ? clean(patch.screenshot) : before.screenshot,
+    financeResponse:
+      patch.financeResponse !== undefined ? clean(patch.financeResponse) : before.financeResponse,
   };
 
   // Collected cash cannot carry a ticket or a why-it-failed reason.
@@ -526,6 +543,7 @@ export async function saveEntry(args: {
   put(idx.ticket, next.ticket);
   put(idx.reason, next.reason);
   put(idx.screenshot, next.screenshot);
+  put(idx.financeResponse, next.financeResponse);
   put(idx.updatedBy, actor);
   put(idx.updatedAt, stamp);
 
@@ -546,11 +564,22 @@ export async function saveEntry(args: {
     });
   }
 
-  // Mirroring and auditing are convenience layers — never fail the save on them.
-  await Promise.allSettled([
+  // Mirroring and auditing are convenience layers — never fail the save on
+  // them. But "never fail" doesn't mean "never find out": a rejection here
+  // (e.g. a protected range on the source tab silently blocking the mirror)
+  // used to vanish with zero trace. Logging it costs nothing and is how this
+  // exact failure mode — Cash Collection columns A-H protected against the
+  // service account — got diagnosed.
+  const settled = await Promise.allSettled([
     mirrorToSourceTab(section, key, next, actor, stamp),
     appendAudit(section, key, before, next, role, actor, stamp),
   ]);
+  const stepNames = ['mirrorToSourceTab', 'appendAudit'];
+  settled.forEach((s, i) => {
+    if (s.status === 'rejected') {
+      console.error(`[saveEntry] ${stepNames[i]} failed for ${key}:`, s.reason);
+    }
+  });
 
   return { key, ...next, updatedBy: actor, updatedAt: stamp };
 }
@@ -598,6 +627,7 @@ async function mirrorToSourceTab(
         { col: idx.status, value: next.status },
         { col: idx.ticket, value: next.ticket },
         { col: idx.reason, value: next.reason },
+        { col: idx.financeResponse, value: next.financeResponse },
       ]
     : [
         { col: idx.reason, value: next.reason },
@@ -631,7 +661,7 @@ async function appendAudit(
   actor: string,
   stamp: string,
 ): Promise<void> {
-  const changed = (['status', 'ticket', 'reason', 'screenshot'] as const)
+  const changed = (['status', 'ticket', 'reason', 'screenshot', 'financeResponse'] as const)
     .filter((f) => (before[f] || '') !== (after[f] || ''))
     .map((f) => [stamp, section, key, f, before[f] || '', after[f] || '', ROLE_LABELS[role], actor]);
 

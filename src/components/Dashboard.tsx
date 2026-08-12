@@ -21,6 +21,7 @@ export type EntryPatch = {
   ticket?: string;
   reason?: string;
   screenshot?: string;
+  financeResponse?: string;
 };
 
 export interface SectionProps {
