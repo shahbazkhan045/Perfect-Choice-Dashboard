@@ -1,13 +1,26 @@
 'use client';
 
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { CanxRow } from '@/lib/types';
 import { applyFilter, ageInDays, canxKpis, isCanxAnswered, type FilterKey } from '@/lib/stats';
 import { formatDmy } from '@/lib/parse';
 import { downloadCsv, toCsv } from '@/lib/csv';
-import { AgeBadge, EmptyBanner, FallbackBanner, Filters, Kpi, ReasonField } from '@/components/ui';
+import {
+  AgeBadge,
+  EmptyBanner,
+  FallbackBanner,
+  Filters,
+  Kpi,
+  Modal,
+  ReasonField,
+} from '@/components/ui';
 import DayBarChart, { type DayDatum } from '@/components/DayBarChart';
 import type { SectionProps } from '@/components/Dashboard';
+
+/** PDFs open in a new tab; everything else previews inline in a modal. */
+function isLikelyImage(url: string): boolean {
+  return /\.(png|jpe?g|webp|gif)(\?|#|$)/i.test(url);
+}
 
 const FILTER_TITLES: Record<FilterKey, string> = {
   yesterday: 'Yesterday',
@@ -36,6 +49,8 @@ export default function CanxSection({
   canEdit,
   onRefresh,
 }: Props) {
+  const [viewingUrl, setViewingUrl] = useState<string | null>(null);
+
   const result = useMemo(
     () => applyFilter(data.canx, filter, data.today, data.yesterday),
     [data.canx, data.today, data.yesterday, filter],
@@ -191,6 +206,7 @@ export default function CanxSection({
                     saving={savingKeys.has(row.key)}
                     onPatch={onPatch}
                     onUpload={onUpload}
+                    onView={setViewingUrl}
                   />
                 ))
               ) : (
@@ -204,6 +220,17 @@ export default function CanxSection({
           </table>
         </div>
       </div>
+
+      {viewingUrl ? (
+        <Modal title="Screenshot" onClose={() => setViewingUrl(null)}>
+          <img src={viewingUrl} alt="Uploaded screenshot" className="screenshot-preview" />
+          <p className="screenshot-open-link">
+            <a href={viewingUrl} target="_blank" rel="noreferrer noopener">
+              Open original in a new tab ↗
+            </a>
+          </p>
+        </Modal>
+      ) : null}
     </section>
   );
 }
@@ -215,6 +242,7 @@ function Row({
   saving,
   onPatch,
   onUpload,
+  onView,
 }: {
   row: CanxRow;
   today: string;
@@ -222,6 +250,7 @@ function Row({
   saving: boolean;
   onPatch: SectionProps['onPatch'];
   onUpload: SectionProps['onUpload'];
+  onView: (url: string) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const answered = isCanxAnswered(row);
@@ -255,14 +284,24 @@ function Row({
           </span>
 
           {row.screenshot ? (
-            <a
-              className="pill pill-link"
-              href={row.screenshot}
-              target="_blank"
-              rel="noreferrer noopener"
-            >
-              📎 View screenshot
-            </a>
+            isLikelyImage(row.screenshot) ? (
+              <button
+                type="button"
+                className="pill pill-link"
+                onClick={() => onView(row.screenshot)}
+              >
+                👁 View screenshot
+              </button>
+            ) : (
+              <a
+                className="pill pill-link"
+                href={row.screenshot}
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                👁 View screenshot
+              </a>
+            )
           ) : null}
 
           {canEdit ? (
