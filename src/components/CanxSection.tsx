@@ -166,6 +166,13 @@ export default function CanxSection({
         <EmptyBanner>🎉 Nothing pending — every cancellation has a reason.</EmptyBanner>
       ) : null}
 
+      {filter === 'yesterday' && !result.rows.length ? (
+        <EmptyBanner>
+          🎉 All caught up — every cancellation for {formatDmy(result.shownDate || data.yesterday)}{' '}
+          has a reason.
+        </EmptyBanner>
+      ) : null}
+
       {filter === 'mtd' && chartData.length ? (
         <DayBarChart
           title="Daily cancellations & releases"

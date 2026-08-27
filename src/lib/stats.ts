@@ -65,17 +65,24 @@ export function applyFilter<T extends AnyRow>(
     return { rows };
   }
 
-  // Yesterday, with a graceful fallback to the most recent day the sheet holds.
-  const exact = all.filter((r) => r.date === yesterday);
-  if (exact.length) {
-    return { rows: sortByLabel(exact), shownDate: yesterday };
+  // Yesterday: only what still needs a reply for that day. An answered row
+  // is done — it belongs in "Updated" now, not lingering here just because
+  // its date still says yesterday. The fallback (when yesterday has no rows
+  // at all yet, e.g. the daily export hasn't landed) still keys off every
+  // row for that day, not just unanswered ones, so a day that legitimately
+  // has no data at all is distinguished from a day that's simply finished.
+  const hasYesterdayData = all.some((r) => r.date === yesterday);
+
+  if (hasYesterdayData) {
+    const rows = sortByLabel(all.filter((r) => r.date === yesterday && !isAnswered(r)));
+    return { rows, shownDate: yesterday };
   }
 
   const latest = latestDate(all);
   if (!latest) return { rows: [], shownDate: yesterday };
 
   return {
-    rows: sortByLabel(all.filter((r) => r.date === latest)),
+    rows: sortByLabel(all.filter((r) => r.date === latest && !isAnswered(r))),
     fallbackFrom: yesterday,
     fallbackTo: latest,
     shownDate: latest,

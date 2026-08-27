@@ -296,6 +296,13 @@ export default function CashSection({
             <EmptyBanner>🎉 Nothing pending — every cash entry has been confirmed.</EmptyBanner>
           ) : null}
 
+          {filter === 'yesterday' && !result.rows.length ? (
+            <EmptyBanner>
+              🎉 All caught up — every entry for {formatDmy(result.shownDate || data.yesterday)}{' '}
+              has been confirmed.
+            </EmptyBanner>
+          ) : null}
+
           {filter === 'mtd' && chartData.length ? (
             <DayBarChart
               title="Daily cash by confirmation status"
