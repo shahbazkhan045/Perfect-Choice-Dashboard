@@ -1,7 +1,7 @@
 import { google, type sheets_v4 } from 'googleapis';
 import { JWT } from 'google-auth-library';
 import { SHEET_ID, TABS } from './config';
-import { clean, formatStampCell, nowStamp, toIsoDate, toNumber, toPercent } from './parse';
+import { clean, formatStampCell, nowStamp, todayIso, toIsoDate, toNumber, toPercent } from './parse';
 import type { CanxRow, CashRow, Role, Section } from './types';
 import { ROLE_LABELS } from './types';
 
@@ -345,15 +345,34 @@ export interface WorkbookResult {
   cash: CashRow[];
   canx: CanxRow[];
   /**
-   * The true overall cancellation rate, maintained by hand in the LAST row of
-   * the Cancellations tab (columns A-E blank, column F holds the percentage —
-   * e.g. 0.38%). Per-row percentages in that same column are each ~100%,
-   * since a cancelled booking is trivially 100% cancelled; averaging those
-   * is a different, much less meaningful number than the real rate against
-   * all bookings, which only the team maintaining the sheet actually knows.
-   * `null` until that row exists.
+   * The true overall cancellation rate, hand-maintained by the team — see
+   * canxMonthlyPct below for exactly how. This is just canxMonthlyPct's
+   * entry for the CURRENT month (Asia/Dubai "today"), kept as its own field
+   * because it predates the monthly archive and the always-visible "Total
+   * cancellation rate" KPI card reads it directly. `null` until this month
+   * has an entry.
    */
   canxTotalPct: number | null;
+  /**
+   * month key (yyyy-MM) -> the team's hand-entered cancellation rate for
+   * that month, e.g. { "2026-08": 0.38 }.
+   *
+   * A "total row" is any row with every identifying column blank and only
+   * the percent column filled in (columns A-E blank, F has a value) — the
+   * same convention as before, just no longer restricted to being the
+   * literal last row of the sheet. Scanning top to bottom, each total row is
+   * attributed to whichever month the nearest PRECEDING real data row
+   * belongs to. That's what makes this a durable monthly archive rather
+   * than a single always-overwritten cell: the team leaves August's row
+   * exactly where it is when September starts, and adds a new blank row
+   * further down (after September's own data) whenever they want to record
+   * September's rate. Nothing needs to move — a row's meaning is fixed by
+   * its position in the sheet, and new rows only ever get appended below.
+   * Per-row percentages elsewhere in this column are each ~100% (see
+   * canxKpis in stats.ts) and are never mistaken for this value, since those
+   * rows always carry an appointment code.
+   */
+  canxMonthlyPct: Record<string, number>;
 }
 
 export async function readWorkbook(): Promise<WorkbookResult> {
@@ -399,7 +418,7 @@ export async function readWorkbook(): Promise<WorkbookResult> {
 
   // ---- Cancellations ----
   const canx: CanxRow[] = [];
-  let canxTotalPct: number | null = null;
+  const canxMonthlyPct: Record<string, number> = {};
 
   if (wb.canx.raw.length >= 2) {
     const idx = indexHeaders(wb.canx.raw[0], CANX_SPEC);
@@ -409,26 +428,29 @@ export async function readWorkbook(): Promise<WorkbookResult> {
       );
     }
 
-    // The team's hand-maintained total row: last row of the sheet, every
-    // identifying column blank, only the percent column filled in. It's
-    // checked up front (rather than inline in the loop below) so the "is
-    // this the total row" rule lives in exactly one place.
-    const lastR = wb.canx.raw.length - 1;
-    const lastCode = clean(cell(wb.canx.raw, lastR, idx.code));
-    const lastDate = toIsoDate(cell(wb.canx.raw, lastR, idx.date));
-    const lastPctCell = idx.pct >= 0 ? cell(wb.canx.raw, lastR, idx.pct) : '';
-    const lastPctPresent = lastPctCell !== '' && lastPctCell !== null && lastPctCell !== undefined;
-
-    if (lastR >= 1 && !lastCode && !lastDate && lastPctPresent) {
-      canxTotalPct = toPercent(lastPctCell, cell(wb.canx.display, lastR, idx.pct));
-    }
+    // Tracks which month "owns" a total row as we scan top to bottom — the
+    // month of the most recent real data row seen so far. See canxMonthlyPct
+    // above for why this makes a total row's position (not its content) the
+    // thing that fixes its meaning.
+    let currentDataMonth = '';
 
     for (let r = 1; r < wb.canx.raw.length; r++) {
       const code = clean(cell(wb.canx.raw, r, idx.code));
       const date = toIsoDate(cell(wb.canx.raw, r, idx.date));
-      // Same emptiness test as the total row above — this is what keeps
-      // that row out of the table instead of showing up as a blank entry.
-      if (!code && !date) continue;
+
+      if (!code && !date) {
+        // Candidate total row: every identifying column blank.
+        const pctCell = idx.pct >= 0 ? cell(wb.canx.raw, r, idx.pct) : '';
+        const pctPresent = pctCell !== '' && pctCell !== null && pctCell !== undefined;
+        if (pctPresent && currentDataMonth) {
+          // Last one wins if a month somehow gets more than one — that's
+          // the most recently written value for that month.
+          canxMonthlyPct[currentDataMonth] = toPercent(pctCell, cell(wb.canx.display, r, idx.pct));
+        }
+        continue; // never a visible row, same as before
+      }
+
+      if (date) currentDataMonth = date.slice(0, 7);
 
       const cleaner = clean(cell(wb.canx.raw, r, idx.cleaner));
       const key = canxKey(date, code, cleaner);
@@ -452,7 +474,9 @@ export async function readWorkbook(): Promise<WorkbookResult> {
     }
   }
 
-  return { cash, canx, canxTotalPct };
+  const canxTotalPct = canxMonthlyPct[todayIso().slice(0, 7)] ?? null;
+
+  return { cash, canx, canxTotalPct, canxMonthlyPct };
 }
 
 // ---------------------------------------------------------------------------

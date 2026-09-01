@@ -70,9 +70,11 @@ export interface DashboardData {
   /**
    * The team's own overall cancellation rate, hand-entered in the sheet —
    * see readWorkbook() in lib/sheets.ts for exactly where. `null` until
-   * that row exists.
+   * that row exists. This is canxMonthlyPct's entry for the current month.
    */
   canxTotalPct: number | null;
+  /** month key (yyyy-MM) -> hand-entered cancellation rate for that month. */
+  canxMonthlyPct: Record<string, number>;
 }
 
 export interface ReminderStats {

@@ -1,12 +1,14 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { CashRow } from '@/lib/types';
 import {
   applyFilter,
   ageInDays,
   cashKpis,
+  cashMonthSummaries,
   financeCommentsRows,
+  type CashMonthSummary,
   type FilterKey,
 } from '@/lib/stats';
 import { formatDmy } from '@/lib/parse';
@@ -50,6 +52,16 @@ export default function CashSection({
   onRemind,
 }: Props) {
   const isFinanceTab = filter === 'financeComments';
+  const isMtdTab = filter === 'mtd';
+
+  // "Month to date" opens on a month-by-month archive; clicking a month
+  // drills into that month's full row-level view (same table every other
+  // tab uses). Leaving the tab always resets back to the archive list, so
+  // switching away and back never leaves you stranded inside an old month.
+  const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isMtdTab) setExpandedMonth(null);
+  }, [isMtdTab]);
 
   const result = useMemo(
     () => applyFilter(data.cash, filter, data.today, data.yesterday),
@@ -58,32 +70,42 @@ export default function CashSection({
 
   const financeAll = useMemo(() => financeCommentsRows(data.cash), [data.cash]);
 
+  // Every calendar month present in the sheet — nothing is archived by a
+  // separate action, a month's rows simply group under its own key the
+  // moment they exist. This is what makes last month's data "arrive" in
+  // the archive automatically once the new month's rows start appearing.
+  const monthSummaries = useMemo(() => cashMonthSummaries(data.cash), [data.cash]);
+
+  const monthRows = useMemo(
+    () => (expandedMonth ? data.cash.filter((r) => r.date.startsWith(expandedMonth)) : []),
+    [data.cash, expandedMonth],
+  );
+
   const counts = useMemo(
     () =>
       ({
         yesterday: applyFilter(data.cash, 'yesterday', data.today, data.yesterday).rows.length,
         pending: applyFilter(data.cash, 'pending', data.today, data.yesterday).rows.length,
         updated: applyFilter(data.cash, 'updated', data.today, data.yesterday).rows.length,
-        mtd: applyFilter(data.cash, 'mtd', data.today, data.yesterday).rows.length,
+        mtd: monthSummaries.length,
         financeComments: financeAll.length,
       }) as Record<FilterKey, number>,
-    [data.cash, data.today, data.yesterday, financeAll],
+    [data.cash, data.today, data.yesterday, financeAll, monthSummaries],
   );
 
   const term = search.trim().toLowerCase();
 
-  const rows = useMemo(
-    () =>
-      term
-        ? result.rows.filter(
-            (r) =>
-              r.ref.toLowerCase().includes(term) ||
-              r.reason.toLowerCase().includes(term) ||
-              formatDmy(r.date).includes(term),
-          )
-        : result.rows,
-    [result.rows, term],
-  );
+  const rows = useMemo(() => {
+    const base = isMtdTab ? monthRows : result.rows;
+    return term
+      ? base.filter(
+          (r) =>
+            r.ref.toLowerCase().includes(term) ||
+            r.reason.toLowerCase().includes(term) ||
+            formatDmy(r.date).includes(term),
+        )
+      : base;
+  }, [isMtdTab, monthRows, result.rows, term]);
 
   const financeRows = useMemo(
     () =>
@@ -99,11 +121,18 @@ export default function CashSection({
     [financeAll, term],
   );
 
+  const visibleMonths = useMemo(
+    () => (term ? monthSummaries.filter((m) => m.label.toLowerCase().includes(term)) : monthSummaries),
+    [monthSummaries, term],
+  );
+
   const kpis = useMemo(() => cashKpis(rows), [rows]);
-  const scope = FILTER_TITLES[filter];
+  const scope = isMtdTab && expandedMonth
+    ? monthSummaries.find((m) => m.key === expandedMonth)?.label || expandedMonth
+    : FILTER_TITLES[filter];
 
   const chartData: DayDatum[] = useMemo(() => {
-    if (filter !== 'mtd') return [];
+    if (!isMtdTab || !expandedMonth) return [];
     const byDay = new Map<string, DayDatum>();
     for (const r of rows) {
       if (!r.date) continue;
@@ -116,9 +145,10 @@ export default function CashSection({
       else d.values.awaiting += r.amount;
     }
     return [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date));
-  }, [rows, filter]);
+  }, [rows, isMtdTab, expandedMonth]);
 
   const pct = (n: number) => (kpis.totalCount ? (n / kpis.totalCount) * 100 : 0);
+  const isMonthList = isMtdTab && !expandedMonth;
 
   function download() {
     if (isFinanceTab) {
@@ -127,6 +157,14 @@ export default function CashSection({
         financeRows.map((r) => [formatDmy(r.date), r.ref, r.financeComment, r.financeResponse]),
       );
       downloadCsv(`finance-comments-${data.today}.csv`, csv);
+      return;
+    }
+    if (isMonthList) {
+      const csv = toCsv(
+        ['Month', 'Total cash', 'Confirmed collected', 'Not collected'],
+        visibleMonths.map((m) => [m.label, m.total.toFixed(2), m.collected.toFixed(2), m.notCollected.toFixed(2)]),
+      );
+      downloadCsv(`cash-collection-monthly-summary-${data.today}.csv`, csv);
       return;
     }
     const csv = toCsv(
@@ -142,7 +180,7 @@ export default function CashSection({
         r.updatedAt,
       ]),
     );
-    downloadCsv(`cash-collection-${filter}-${data.today}.csv`, csv);
+    downloadCsv(`cash-collection-${isMtdTab ? expandedMonth : filter}-${data.today}.csv`, csv);
   }
 
   return (
@@ -156,8 +194,14 @@ export default function CashSection({
             tone={financeRows.length ? 'warn' : 'plain'}
           />
         </div>
-      ) : (
+      ) : isMonthList ? null : (
         <>
+          {isMtdTab ? (
+            <button type="button" className="btn back-to-months" onClick={() => setExpandedMonth(null)}>
+              ← Back to months
+            </button>
+          ) : null}
+
           <div className="kpi-row">
             <Kpi label={`Total cash · ${scope}`} value={money(kpis.total)} />
             <Kpi label="Confirmed collected" value={money(kpis.collected)} tone="good" />
@@ -220,7 +264,13 @@ export default function CashSection({
             className="table-search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={isFinanceTab ? 'Search reference or comment…' : 'Search reference or reason…'}
+            placeholder={
+              isFinanceTab
+                ? 'Search reference or comment…'
+                : isMonthList
+                  ? 'Search month…'
+                  : 'Search reference or reason…'
+            }
             aria-label="Search cash entries"
           />
           <button type="button" className="btn" onClick={onRefresh}>
@@ -230,7 +280,7 @@ export default function CashSection({
             type="button"
             className="btn"
             onClick={download}
-            disabled={isFinanceTab ? !financeRows.length : !rows.length}
+            disabled={isFinanceTab ? !financeRows.length : isMonthList ? !visibleMonths.length : !rows.length}
           >
             ⬇ Download
           </button>
@@ -286,6 +336,34 @@ export default function CashSection({
             </div>
           </div>
         </>
+      ) : isMonthList ? (
+        <div className="card table-card">
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th className="num">Total cash</th>
+                  <th className="num">Confirmed collected</th>
+                  <th className="num">Not collected</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleMonths.length ? (
+                  visibleMonths.map((m) => (
+                    <MonthRow key={m.key} month={m} money={money} onSelect={setExpandedMonth} />
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="table-msg">
+                      {term ? 'No months match your search.' : 'No cash data yet.'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
         <>
           {result.fallbackFrom && result.fallbackTo ? (
@@ -303,10 +381,10 @@ export default function CashSection({
             </EmptyBanner>
           ) : null}
 
-          {filter === 'mtd' && chartData.length ? (
+          {isMtdTab && chartData.length ? (
             <DayBarChart
               title="Daily cash by confirmation status"
-              subtitle="Month to date"
+              subtitle={scope}
               series={[
                 { id: 'collected', label: 'Collected', colorVar: '--viz-collected' },
                 { id: 'notCollected', label: 'Not collected', colorVar: '--viz-notcollected' },
@@ -314,7 +392,7 @@ export default function CashSection({
               ]}
               data={chartData}
               format={(n) => money(n)}
-              emptyLabel="No cash entries this month yet."
+              emptyLabel="No cash entries this month."
             />
           ) : null}
 
@@ -359,6 +437,40 @@ export default function CashSection({
         </>
       )}
     </section>
+  );
+}
+
+function MonthRow({
+  month,
+  money,
+  onSelect,
+}: {
+  month: CashMonthSummary;
+  money: (n: number) => string;
+  onSelect: (key: string) => void;
+}) {
+  return (
+    <tr
+      className="month-row"
+      tabIndex={0}
+      role="button"
+      aria-label={`Open ${month.label}`}
+      onClick={() => onSelect(month.key)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect(month.key);
+        }
+      }}
+    >
+      <td className="strong">
+        {month.label}
+        <span className="month-arrow" aria-hidden="true">→</span>
+      </td>
+      <td className="num strong">{money(month.total)}</td>
+      <td className="num tone-good">{money(month.collected)}</td>
+      <td className="num tone-bad">{money(month.notCollected)}</td>
+    </tr>
   );
 }
 

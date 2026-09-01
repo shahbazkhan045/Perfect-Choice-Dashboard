@@ -206,6 +206,96 @@ export function canxKpis(rows: CanxRow[]): CanxKpis {
 }
 
 // ---------------------------------------------------------------------------
+// Monthly archive — the "Month to date" tab's summary-by-month view.
+//
+// Nothing here needs its own storage: every month's data already lives
+// permanently in the sheet (rows are never deleted), so a summary row is
+// just that month's rows grouped and totalled. The month rolling over is
+// not an event this app has to react to — the grouping key is simply
+// whatever month a row's own date falls in.
+// ---------------------------------------------------------------------------
+
+/** "2026-08" -> "August 2026". Timezone-free: only ever fed a yyyy-MM key. */
+export function formatMonthLabel(monthKey: string): string {
+  const [y, m] = monthKey.split('-').map(Number);
+  if (!y || !m) return monthKey;
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleString('en-US', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+export interface CashMonthSummary {
+  key: string;
+  label: string;
+  total: number;
+  collected: number;
+  notCollected: number;
+  entryCount: number;
+}
+
+/** One row per calendar month present in the data, newest first. */
+export function cashMonthSummaries(cash: CashRow[]): CashMonthSummary[] {
+  const map = new Map<string, CashMonthSummary>();
+
+  for (const r of cash) {
+    if (!r.date) continue;
+    const key = r.date.slice(0, 7);
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        label: formatMonthLabel(key),
+        total: 0,
+        collected: 0,
+        notCollected: 0,
+        entryCount: 0,
+      });
+    }
+    const m = map.get(key)!;
+    m.total += r.amount;
+    m.entryCount += 1;
+    if (r.status === 'Collected') m.collected += r.amount;
+    else if (r.status === 'Not collected') m.notCollected += r.amount;
+  }
+
+  return [...map.values()].sort((a, b) => b.key.localeCompare(a.key));
+}
+
+export interface CanxMonthSummary {
+  key: string;
+  label: string;
+  /** Sum of each row's count — matches the "Cancellations & releases" KPI. */
+  totalCancellations: number;
+  /** The team's own hand-entered rate for this month; null if not recorded. */
+  pct: number | null;
+}
+
+/** One row per calendar month present in the data, newest first. */
+export function canxMonthSummaries(
+  canx: CanxRow[],
+  monthlyPct: Record<string, number>,
+): CanxMonthSummary[] {
+  const map = new Map<string, CanxMonthSummary>();
+
+  for (const r of canx) {
+    if (!r.date) continue;
+    const key = r.date.slice(0, 7);
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        label: formatMonthLabel(key),
+        totalCancellations: 0,
+        pct: monthlyPct[key] ?? null,
+      });
+    }
+    map.get(key)!.totalCancellations += r.count || 1;
+  }
+
+  return [...map.values()].sort((a, b) => b.key.localeCompare(a.key));
+}
+
+// ---------------------------------------------------------------------------
 // Reminder email figures
 // ---------------------------------------------------------------------------
 
