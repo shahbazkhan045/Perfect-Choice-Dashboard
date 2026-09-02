@@ -53,7 +53,14 @@ export function applyFilter<T extends AnyRow>(
   }
 
   if (filter === 'updated') {
-    const rows = all.filter((r) => isAnswered(r));
+    // Scoped to the current month only. A row that's already answered isn't
+    // "pending" anywhere else, so once its month ends it would otherwise sit
+    // in this tab forever — the only place it should still be found is that
+    // month's own row in the Month to date archive (see cashMonthSummaries /
+    // canxMonthSummaries), which already holds every row for that month,
+    // answered or not.
+    const month = today.slice(0, 7);
+    const rows = all.filter((r) => isAnswered(r) && r.date.startsWith(month));
     rows.sort((a, b) => b.date.localeCompare(a.date) || rowLabel(a).localeCompare(rowLabel(b)));
     return { rows };
   }
