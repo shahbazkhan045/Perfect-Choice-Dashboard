@@ -313,13 +313,19 @@ export function canxMonthSummaries(
 // Company performance
 //
 // Two data sources, joined by name rather than by any shared key:
-//  - companyPerf: one row per absence event (a cleaner, on a date, for a
-//    company) — read straight off "Company Performance" columns A-E.
+//  - companyPerf: one row per (cleaner, date) roster entry — read straight
+//    off "Company Performance" columns A-F. Every cleaner scheduled that
+//    day gets a row; `count` is that row's own Absent BD value: 0 (present),
+//    0.5 (half-day absent) or 1 (full-day absent) — NOT a flag meaning "this
+//    row is an absence". A company's Absent BD total is sum(count), never a
+//    row count — most rows are 0s (someone present that day) and counting
+//    rows instead of summing was the original bug: it reported >4000
+//    "absences" for a company whose real total was ~140. Verified against
+//    the sheet's own per-date-per-company mini table: sum(count) for every
+//    (date, company) pair in the raw rows matches that mini table's own
+//    Absent BD # column exactly.
 //  - canx: Cancellations rows, each already carrying a `company` field
 //    resolved in lib/sheets.ts (van/cleaner name -> company).
-// Everything below is plain grouping and counting over those two arrays; the
-// one genuinely nontrivial piece is companyMonthlyAbsentPct, which explains
-// itself.
 // ---------------------------------------------------------------------------
 
 const monthOf = (iso: string): string => iso.slice(0, 7);
@@ -381,96 +387,114 @@ export interface CompanyKpis {
   absentPct: number | null;
   cancellationCount: number;
   /**
-   * This company's cancellations as a share of every company's
-   * cancellations that month — Cancellations has no per-company rate of its
-   * own anywhere in the sheet, so unlike absentPct this isn't read from a
-   * hand-maintained figure. It's deliberately labelled "share" in the UI,
-   * not "rate", so it's never mistaken for the sheet's own cancellation %.
+   * The sheet's own overall monthly cancellation rate — the exact same
+   * figure the Cancellations & releases tab shows as "Total cancellation
+   * rate" for that month (canxMonthlyPct). This is NOT company-specific —
+   * the sheet only ever records one rate per month, for everyone — so both
+   * companies show the same number here by design; it's shown per company
+   * only because that's where the rest of that company's figures live.
+   * Null until the team records that month's rate.
    */
-  cancellationShare: number | null;
+  cancellationPct: number | null;
 }
 
 export function companyKpis(
   perf: CompanyPerfRow[],
   canx: CanxRow[],
   daily: CompanyAbsentDaily[],
+  canxMonthlyPct: Record<string, number>,
   company: string,
   month: string,
 ): CompanyKpis {
-  const absentCount = perf.filter(
-    (r) => r.company === company && r.date && monthOf(r.date) === month,
-  ).length;
+  const absentCount = perf
+    .filter((r) => r.company === company && r.date && monthOf(r.date) === month)
+    .reduce((s, r) => s + r.count, 0);
 
-  const monthCanx = canx.filter((r) => r.date && monthOf(r.date) === month);
-  const companyCanxCount = monthCanx
-    .filter((r) => r.company === company)
+  const cancellationCount = canx
+    .filter((r) => r.company === company && r.date && monthOf(r.date) === month)
     .reduce((s, r) => s + (r.count || 1), 0);
-  const totalCanxCount = monthCanx.reduce((s, r) => s + (r.count || 1), 0);
 
   return {
     absentCount,
     absentPct: companyMonthlyAbsentPct(daily, company, month),
-    cancellationCount: companyCanxCount,
-    cancellationShare: totalCanxCount > 0 ? (companyCanxCount / totalCanxCount) * 100 : null,
+    cancellationCount,
+    cancellationPct: canxMonthlyPct[month] ?? null,
   };
 }
 
+export type DefaulterMetric = 'absent' | 'cancellations';
+export type DefaulterGroupBy = 'cleaner' | 'van';
+
 export interface DefaulterEntry {
-  cleanerId: string;
-  cleanerName: string;
-  van: string;
+  key: string;
+  /** Cleaner name or van name, depending on groupBy. */
+  name: string;
+  /** Van (grouped by cleaner) or company (grouped by van) — shown as context. */
+  secondary: string;
   company: string;
-  count: number;
+  absentCount: number;
+  cancellationCount: number;
 }
 
-export type DefaulterMetric = 'absent' | 'cancellations';
-
-/** Every cleaner, both companies combined, ranked highest-first for one month. */
+/**
+ * Every cleaner (or every van), both companies combined, for one month —
+ * both Absent BD and Cancellations are always computed together; `metric`
+ * only picks which one the list is ranked by (ties broken by the other
+ * metric, then by name).
+ */
 export function defaultersList(
   perf: CompanyPerfRow[],
   canx: CanxRow[],
   month: string,
+  groupBy: DefaulterGroupBy,
   metric: DefaulterMetric,
 ): DefaulterEntry[] {
-  const byName = new Map<string, DefaulterEntry>();
+  const rows = new Map<string, DefaulterEntry>();
 
-  if (metric === 'absent') {
-    for (const r of perf) {
-      if (!r.date || monthOf(r.date) !== month || !r.cleanerName) continue;
-      const entry = byName.get(r.cleanerName) ?? {
-        cleanerId: r.cleanerId,
-        cleanerName: r.cleanerName,
-        van: r.van,
-        company: r.company,
-        count: 0,
-      };
-      entry.count += 1;
-      entry.van = r.van || entry.van;
-      byName.set(r.cleanerName, entry);
-    }
-  } else {
-    for (const r of canx) {
-      if (!r.date || monthOf(r.date) !== month || !r.cleaner) continue;
-      const entry = byName.get(r.cleaner) ?? {
-        cleanerId: '',
-        cleanerName: r.cleaner,
-        van: r.van,
-        company: r.company,
-        count: 0,
-      };
-      entry.count += r.count || 1;
-      entry.van = r.van || entry.van;
-      byName.set(r.cleaner, entry);
-    }
+  const blank = (key: string, secondary: string, company: string): DefaulterEntry => ({
+    key,
+    name: key,
+    secondary,
+    company,
+    absentCount: 0,
+    cancellationCount: 0,
+  });
+
+  for (const r of perf) {
+    if (!r.date || monthOf(r.date) !== month || !r.count) continue; // 0 = present, not an absence
+    const key = groupBy === 'cleaner' ? r.cleanerName : r.van;
+    if (!key) continue;
+    const entry = rows.get(key) ?? blank(key, groupBy === 'cleaner' ? r.van : r.company, r.company);
+    entry.absentCount += r.count;
+    if (groupBy === 'cleaner' && r.van) entry.secondary = r.van; // most recent van wins
+    rows.set(key, entry);
   }
 
-  return [...byName.values()]
-    .filter((e) => e.count > 0)
-    .sort((a, b) => b.count - a.count || a.cleanerName.localeCompare(b.cleanerName));
+  for (const r of canx) {
+    if (!r.date || monthOf(r.date) !== month) continue;
+    const key = groupBy === 'cleaner' ? r.cleaner : r.van;
+    if (!key) continue;
+    const entry = rows.get(key) ?? blank(key, groupBy === 'cleaner' ? r.van : r.company, r.company);
+    entry.cancellationCount += r.count || 1;
+    if (!entry.company && r.company) entry.company = r.company;
+    if (groupBy === 'cleaner' && r.van && !entry.secondary) entry.secondary = r.van;
+    rows.set(key, entry);
+  }
+
+  return [...rows.values()]
+    .filter((e) => e.absentCount > 0 || e.cancellationCount > 0)
+    .sort((a, b) => {
+      const [primaryA, primaryB, secondaryA, secondaryB] =
+        metric === 'absent'
+          ? [a.absentCount, b.absentCount, a.cancellationCount, b.cancellationCount]
+          : [a.cancellationCount, b.cancellationCount, a.absentCount, b.absentCount];
+      return primaryB - primaryA || secondaryB - secondaryA || a.name.localeCompare(b.name);
+    });
 }
 
 export interface CompanyCleanerRollupFilters {
-  date?: string;
+  dateFrom?: string;
+  dateTo?: string;
   cleanerName?: string;
   van?: string;
 }
@@ -482,12 +506,13 @@ export interface CompanyCleanerRollupRow {
   absentCount: number;
   /**
    * This cleaner's share of the company's total absences for the month
-   * (narrowed by the Date filter too, if one's set — "what % of that day
-   * belongs to this cleaner" is still a meaningful question). Deliberately
-   * NOT narrowed by the Cleaner name / Van filters below: those exist to
-   * help find a row, not to shrink the population a percentage is taken
-   * against — filtering down to one cleaner would otherwise always show
-   * ~100% and the number would stop meaning anything.
+   * (narrowed by the Date range too, if one's set — "what % of that
+   * stretch belongs to this cleaner" is still a meaningful question).
+   * Deliberately NOT narrowed by the Cleaner name / Van filters below:
+   * those exist to help find a row, not to shrink the population a
+   * percentage is taken against — filtering down to one cleaner would
+   * otherwise always show ~100% and the number would stop meaning
+   * anything.
    */
   absentShare: number;
   cancellationCount: number;
@@ -511,12 +536,18 @@ export function companyCleanerRollup(
   const cleanerTerm = (filters.cleanerName || '').trim().toLowerCase();
   const vanTerm = (filters.van || '').trim().toLowerCase();
 
-  const inBaseScope = (date: string) =>
-    Boolean(date) && monthOf(date) === month && (!filters.date || date === filters.date);
+  const inBaseScope = (date: string) => {
+    if (!date || monthOf(date) !== month) return false;
+    if (filters.dateFrom && date < filters.dateFrom) return false;
+    if (filters.dateTo && date > filters.dateTo) return false;
+    return true;
+  };
 
-  // The share denominator — company + month + date filter only, so it
-  // stays stable while the Cleaner name / Van filters narrow the rows.
-  const totalAbsent = perf.filter((r) => r.company === company && inBaseScope(r.date)).length;
+  // The share denominator — company + month + date range only, so it stays
+  // stable while the Cleaner name / Van filters narrow the visible rows.
+  const totalAbsent = perf
+    .filter((r) => r.company === company && inBaseScope(r.date))
+    .reduce((s, r) => s + r.count, 0);
 
   const perfInScope = perf.filter((r) => {
     if (r.company !== company || !inBaseScope(r.date)) return false;
@@ -546,7 +577,7 @@ export function companyCleanerRollup(
       cancellationCount: 0,
       lastDate: '',
     };
-    row.absentCount += 1;
+    row.absentCount += r.count;
     if (r.date > row.lastDate) {
       row.lastDate = r.date;
       row.van = r.van || row.van; // most recent van wins when a cleaner has moved vans
@@ -587,6 +618,19 @@ export function companyCleanerRollup(
   return [...rows.values()].sort(
     (a, b) => a.lastDate.localeCompare(b.lastDate) || a.cleanerName.localeCompare(b.cleanerName),
   );
+}
+
+/** Distinct, sorted names for the searchable Cleaner name / Van name dropdowns. */
+export function distinctCleanerNames(perf: CompanyPerfRow[], company: string): string[] {
+  return [...new Set(perf.filter((r) => r.company === company).map((r) => r.cleanerName))]
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+}
+
+export function distinctVanNames(perf: CompanyPerfRow[], company: string): string[] {
+  return [...new Set(perf.filter((r) => r.company === company).map((r) => r.van))]
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
 }
 
 // ---------------------------------------------------------------------------

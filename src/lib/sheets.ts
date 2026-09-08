@@ -150,6 +150,9 @@ const COMPANY_PERF_SPEC = {
   cleanerId: ['Cleaner ID', 'Cleaner Id'],
   cleanerName: ['Cleaner Name', 'Cleaner'],
   van: ['Van Name', 'Van'],
+  // Per-row Absent BD value — 0/0.5/1, NOT a per-row "is absent" flag. See
+  // CompanyPerfRow in lib/types.ts.
+  count: ['Absent (BD) #', 'Absent BD #', 'Absent (BD)#'],
 };
 
 const RESP_SPEC = {
@@ -419,6 +422,7 @@ function parseCompanyPerf(grid: Grid, display: Grid): CompanyPerfRow[] {
       cleanerId: clean(cell(grid, r, idx.cleanerId)),
       cleanerName,
       van: clean(cell(grid, r, idx.van)),
+      count: toNumber(cell(grid, r, idx.count)),
     });
   }
   return out;

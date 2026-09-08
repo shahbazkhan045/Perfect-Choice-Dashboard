@@ -67,7 +67,10 @@ export type AnyRow = CashRow | CanxRow;
 // Company performance
 // ---------------------------------------------------------------------------
 
-/** One absence event: a single cleaner, on a single date, for one company. */
+/**
+ * One roster entry: a single cleaner, on a single date, for one company —
+ * NOT necessarily an absence. Every cleaner scheduled that day gets a row.
+ */
 export interface CompanyPerfRow {
   date: string;
   dateRaw: string;
@@ -75,6 +78,12 @@ export interface CompanyPerfRow {
   cleanerId: string;
   cleanerName: string;
   van: string;
+  /**
+   * This row's own Absent BD value: 0 (present), 0.5 (half-day absent) or 1
+   * (full-day absent). A company's Absent BD total is sum(count) across its
+   * rows for the period — never a row count, since most rows are 0s.
+   */
+  count: number;
 }
 
 /**
