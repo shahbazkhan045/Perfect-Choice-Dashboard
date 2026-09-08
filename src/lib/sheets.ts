@@ -2,7 +2,7 @@ import { google, type sheets_v4 } from 'googleapis';
 import { JWT } from 'google-auth-library';
 import { SHEET_ID, TABS } from './config';
 import { clean, formatStampCell, nowStamp, todayIso, toIsoDate, toNumber, toPercent } from './parse';
-import type { CanxRow, CashRow, Role, Section } from './types';
+import type { CanxRow, CashRow, CompanyAbsentDaily, CompanyPerfRow, Role, Section } from './types';
 import { ROLE_LABELS } from './types';
 
 // ---------------------------------------------------------------------------
@@ -141,6 +141,17 @@ const CANX_SPEC = {
   updatedAt: ['Updated At'],
 };
 
+// Left-hand raw table only (columns A-E). The right-hand Absent BD summary
+// mini-table (originally columns K-N) shares header text with columns A-B,
+// so indexHeaders() can't find it — see locateAbsentDailyBlock() below.
+const COMPANY_PERF_SPEC = {
+  date: ['Time - Master Date', 'Master Date', 'Date'],
+  company: ['Company'],
+  cleanerId: ['Cleaner ID', 'Cleaner Id'],
+  cleanerName: ['Cleaner Name', 'Cleaner'],
+  van: ['Van Name', 'Van'],
+};
+
 const RESP_SPEC = {
   key: ['Key'],
   section: ['Section'],
@@ -261,6 +272,7 @@ interface ResponseEntry {
 interface RawWorkbook {
   cash: { raw: Grid; display: Grid };
   canx: { raw: Grid; display: Grid };
+  companyPerf: { raw: Grid; display: Grid };
   responses: { raw: Grid };
 }
 
@@ -268,12 +280,15 @@ async function fetchWorkbook(): Promise<RawWorkbook> {
   await assertSourceTabs();
   await ensureTab(TABS.RESPONSES, RESPONSE_HEADERS);
 
+  // Optional tab — its absence should never break Cash Collection or
+  // Cancellations, so it's only requested when actually present.
+  const tabs = await listTabs();
+  const hasCompanyPerf = tabs.has(TABS.COMPANY_PERF);
+
   const api = sheetsClient();
-  const ranges = [
-    `${quoteTab(TABS.CASH)}!A1:Z`,
-    `${quoteTab(TABS.CANX)}!A1:Z`,
-    `${quoteTab(TABS.RESPONSES)}!A1:Z`,
-  ];
+  const formattedRanges = [`${quoteTab(TABS.CASH)}!A1:Z`, `${quoteTab(TABS.CANX)}!A1:Z`];
+  if (hasCompanyPerf) formattedRanges.push(`${quoteTab(TABS.COMPANY_PERF)}!A1:Z`);
+  const ranges = [...formattedRanges, `${quoteTab(TABS.RESPONSES)}!A1:Z`];
 
   const [unformatted, formatted] = await Promise.all([
     api.spreadsheets.values.batchGet({
@@ -284,7 +299,7 @@ async function fetchWorkbook(): Promise<RawWorkbook> {
     }),
     api.spreadsheets.values.batchGet({
       spreadsheetId: SHEET_ID,
-      ranges: ranges.slice(0, 2),
+      ranges: formattedRanges,
       valueRenderOption: 'FORMATTED_VALUE',
     }),
   ]);
@@ -295,7 +310,10 @@ async function fetchWorkbook(): Promise<RawWorkbook> {
   return {
     cash: { raw: (u[0]?.values as Grid) || [], display: (f[0]?.values as Grid) || [] },
     canx: { raw: (u[1]?.values as Grid) || [], display: (f[1]?.values as Grid) || [] },
-    responses: { raw: (u[2]?.values as Grid) || [] },
+    companyPerf: hasCompanyPerf
+      ? { raw: (u[2]?.values as Grid) || [], display: (f[2]?.values as Grid) || [] }
+      : { raw: [], display: [] },
+    responses: { raw: (u[hasCompanyPerf ? 3 : 2]?.values as Grid) || [] },
   };
 }
 
@@ -373,11 +391,117 @@ export interface WorkbookResult {
    * rows always carry an appointment code.
    */
   canxMonthlyPct: Record<string, number>;
+  companyPerf: CompanyPerfRow[];
+  companyAbsentDaily: CompanyAbsentDaily[];
+}
+
+// ---------------------------------------------------------------------------
+// Company performance
+// ---------------------------------------------------------------------------
+
+function parseCompanyPerf(grid: Grid, display: Grid): CompanyPerfRow[] {
+  const out: CompanyPerfRow[] = [];
+  if (grid.length < 2) return out;
+
+  const idx = indexHeaders(grid[0], COMPANY_PERF_SPEC);
+  if (idx.date < 0) return out;
+
+  for (let r = 1; r < grid.length; r++) {
+    const date = toIsoDate(cell(grid, r, idx.date));
+    const cleanerName = clean(cell(grid, r, idx.cleanerName));
+    const company = clean(cell(grid, r, idx.company));
+    if (!date && !cleanerName) continue; // a blank spacer row, or the right-hand summary block leaking through
+
+    out.push({
+      date,
+      dateRaw: clean(cell(display, r, idx.date)),
+      company,
+      cleanerId: clean(cell(grid, r, idx.cleanerId)),
+      cleanerName,
+      van: clean(cell(grid, r, idx.van)),
+    });
+  }
+  return out;
+}
+
+/**
+ * The Absent BD summary mini-table sits to the right of the raw per-event
+ * table, sharing its own copy of "Time - Master Date" / "Company" headers —
+ * indexHeaders() would just find the raw table's columns again, so this
+ * looks for the SECOND occurrence of "Time - Master Date" in the header row
+ * and reads that column plus the three that follow it (Company, Absent
+ * (BD) #, Absent (BD) %), exactly as laid out in the sheet. Returns []  if
+ * there's no second occurrence — i.e. the mini-table hasn't been added (or
+ * has been removed), which just means no Absent BD % is available anywhere.
+ */
+function parseCompanyAbsentDaily(raw: Grid, display: Grid): CompanyAbsentDaily[] {
+  const header = raw[0] || [];
+  const wantDate = norm('Time - Master Date');
+  const dateCols: number[] = [];
+  header.forEach((h, i) => {
+    if (norm(h) === wantDate) dateCols.push(i);
+  });
+  if (dateCols.length < 2) return [];
+
+  const kCol = dateCols[1];
+  const lCol = kCol + 1; // Company
+  const mCol = kCol + 2; // Absent (BD) #
+  const nCol = kCol + 3; // Absent (BD) %
+
+  const out: CompanyAbsentDaily[] = [];
+  for (let r = 1; r < raw.length; r++) {
+    const kText = clean(cell(raw, r, kCol));
+    // Skips both blank rows and the "Total" sentinel row, which sums BOTH
+    // companies together and so can't be attributed to just one of them —
+    // the per-company monthly rollups in stats.ts recompute a proper
+    // per-company monthly figure from these dated rows instead.
+    if (!kText || /^total$/i.test(kText)) continue;
+
+    const date = toIsoDate(cell(raw, r, kCol));
+    const company = clean(cell(raw, r, lCol));
+    if (!date || !company) continue;
+
+    out.push({
+      date,
+      company,
+      count: toNumber(cell(raw, r, mCol)),
+      pct: toPercent(cell(raw, r, nCol), cell(display, r, nCol)),
+    });
+  }
+  return out;
+}
+
+/**
+ * Cancellations has no "Company" column of its own, so each row's company
+ * is looked up against Company Performance's own van-name -> company map,
+ * falling back to cleaner-name -> company when the van isn't found there.
+ * Real data confirms this reaches every row (van name is the more reliable
+ * key; cleaner name catches the few it misses).
+ */
+function buildCompanyMaps(rows: CompanyPerfRow[]): {
+  vanToCompany: Map<string, string>;
+  cleanerToCompany: Map<string, string>;
+} {
+  const vanToCompany = new Map<string, string>();
+  const cleanerToCompany = new Map<string, string>();
+  for (const r of rows) {
+    if (r.van && r.company && !vanToCompany.has(r.van)) vanToCompany.set(r.van, r.company);
+    if (r.cleanerName && r.company && !cleanerToCompany.has(r.cleanerName)) {
+      cleanerToCompany.set(r.cleanerName, r.company);
+    }
+  }
+  return { vanToCompany, cleanerToCompany };
 }
 
 export async function readWorkbook(): Promise<WorkbookResult> {
   const wb = await fetchWorkbook();
   const responses = parseResponses(wb.responses.raw);
+
+  const companyPerf = parseCompanyPerf(wb.companyPerf.raw, wb.companyPerf.display);
+  const companyAbsentDaily = parseCompanyAbsentDaily(wb.companyPerf.raw, wb.companyPerf.display);
+  const { vanToCompany, cleanerToCompany } = buildCompanyMaps(companyPerf);
+  const companyForCanx = (van: string, cleaner: string): string =>
+    vanToCompany.get(van) || cleanerToCompany.get(cleaner) || '';
 
   // ---- Cash ----
   const cash: CashRow[] = [];
@@ -453,6 +577,7 @@ export async function readWorkbook(): Promise<WorkbookResult> {
       if (date) currentDataMonth = date.slice(0, 7);
 
       const cleaner = clean(cell(wb.canx.raw, r, idx.cleaner));
+      const van = clean(cell(wb.canx.raw, r, idx.van));
       const key = canxKey(date, code, cleaner);
       const resp = responses.get(key);
 
@@ -463,20 +588,21 @@ export async function readWorkbook(): Promise<WorkbookResult> {
         dateRaw: clean(cell(wb.canx.display, r, idx.date)),
         code,
         cleaner,
-        van: clean(cell(wb.canx.raw, r, idx.van)),
+        van,
         count: idx.count >= 0 ? toNumber(cell(wb.canx.raw, r, idx.count)) || 1 : 1,
         pct: toPercent(cell(wb.canx.raw, r, idx.pct), cell(wb.canx.display, r, idx.pct)),
         reason: resp?.reason || clean(cell(wb.canx.raw, r, idx.reason)),
         screenshot: resp?.screenshot || clean(cell(wb.canx.raw, r, idx.screenshot)),
         updatedBy: resp?.updatedBy || clean(cell(wb.canx.raw, r, idx.updatedBy)),
         updatedAt: resp?.updatedAt || clean(cell(wb.canx.display, r, idx.updatedAt)),
+        company: companyForCanx(van, cleaner),
       });
     }
   }
 
   const canxTotalPct = canxMonthlyPct[todayIso().slice(0, 7)] ?? null;
 
-  return { cash, canx, canxTotalPct, canxMonthlyPct };
+  return { cash, canx, canxTotalPct, canxMonthlyPct, companyPerf, companyAbsentDaily };
 }
 
 // ---------------------------------------------------------------------------

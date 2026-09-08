@@ -51,9 +51,46 @@ export interface CanxRow {
   screenshot: string;
   updatedBy: string;
   updatedAt: string;
+  /**
+   * Which company this cancellation belongs to — derived, not a sheet
+   * column. Looked up against the "Company Performance" tab's own
+   * van-name -> company (and, failing that, cleaner-name -> company)
+   * mapping, since Cancellations itself never records a company. Blank
+   * when neither the van nor the cleaner is found there.
+   */
+  company: string;
 }
 
 export type AnyRow = CashRow | CanxRow;
+
+// ---------------------------------------------------------------------------
+// Company performance
+// ---------------------------------------------------------------------------
+
+/** One absence event: a single cleaner, on a single date, for one company. */
+export interface CompanyPerfRow {
+  date: string;
+  dateRaw: string;
+  company: string;
+  cleanerId: string;
+  cleanerName: string;
+  van: string;
+}
+
+/**
+ * One row of the Company Performance tab's own per-date-per-company Absent
+ * BD summary (its second, right-hand mini-table) — the team's own
+ * hand/formula-maintained count and percentage for that company on that
+ * date. Never derived by this app; see readWorkbook() in lib/sheets.ts for
+ * exactly how it's located and parsed, and stats.ts for how it's rolled up
+ * into a monthly percentage per company.
+ */
+export interface CompanyAbsentDaily {
+  date: string;
+  company: string;
+  count: number;
+  pct: number;
+}
 
 export interface DashboardData {
   role: Role;
@@ -75,6 +112,10 @@ export interface DashboardData {
   canxTotalPct: number | null;
   /** month key (yyyy-MM) -> hand-entered cancellation rate for that month. */
   canxMonthlyPct: Record<string, number>;
+  /** Every absence event from the "Company Performance" tab, if present. */
+  companyPerf: CompanyPerfRow[];
+  /** That tab's own per-date-per-company Absent BD #/% summary, if present. */
+  companyAbsentDaily: CompanyAbsentDaily[];
 }
 
 export interface ReminderStats {

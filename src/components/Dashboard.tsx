@@ -6,6 +6,7 @@ import { type FilterKey } from '@/lib/stats';
 import { Toaster, useToast } from '@/components/ui';
 import CashSection from '@/components/CashSection';
 import CanxSection from '@/components/CanxSection';
+import CompanyPerformanceSection from '@/components/CompanyPerformanceSection';
 import ReminderModal from '@/components/ReminderModal';
 
 const NAME_KEY = 'pcd-actor-name';
@@ -36,11 +37,16 @@ export interface SectionProps {
   money: (n: number) => string;
 }
 
+// The shared top-level nav includes a third, read-only tab that has no
+// entry patches of its own — Section stays CASH/CANX everywhere it's used
+// for saving, so this widens only the nav's own selection state.
+type TopTab = Section | 'COMPANY';
+
 export default function Dashboard({ role, roleLabel }: { role: Role; roleLabel: string }) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [section, setSection] = useState<Section>('CASH');
+  const [section, setSection] = useState<TopTab>('CASH');
   const [filters, setFilters] = useState<Record<Section, FilterKey>>({
     CASH: 'yesterday',
     CANX: 'yesterday',
@@ -314,6 +320,15 @@ export default function Dashboard({ role, roleLabel }: { role: Role; roleLabel: 
             <span aria-hidden="true">🚫</span> Cancellations &amp; releases
             <span className="count-badge">{counts.CANX}</span>
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={section === 'COMPANY'}
+            className={`section-tab${section === 'COMPANY' ? ' is-active' : ''}`}
+            onClick={() => setSection('COMPANY')}
+          >
+            <span aria-hidden="true">🏢</span> Company performance
+          </button>
         </nav>
       </header>
 
@@ -370,6 +385,9 @@ export default function Dashboard({ role, roleLabel }: { role: Role; roleLabel: 
             </div>
             <div hidden={section !== 'CANX'}>
               <CanxSection {...canxProps} canEdit={canEdit} onRefresh={() => void load(true)} />
+            </div>
+            <div hidden={section !== 'COMPANY'}>
+              {data ? <CompanyPerformanceSection data={data} /> : null}
             </div>
           </>
         ) : null}

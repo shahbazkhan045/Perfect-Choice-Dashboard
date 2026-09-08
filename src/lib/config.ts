@@ -6,6 +6,9 @@
 export const TABS = {
   CASH: process.env.SHEET_TAB_CASH || 'Cash Collection',
   CANX: process.env.SHEET_TAB_CANX || 'Cancellations',
+  // Optional — read-only, and its absence never blocks the rest of the app.
+  // See readWorkbook() in lib/sheets.ts.
+  COMPANY_PERF: process.env.SHEET_TAB_COMPANY_PERF || 'Company Performance',
   RESPONSES: process.env.SHEET_TAB_RESPONSES || '_Responses',
   AUDIT: process.env.SHEET_TAB_AUDIT || '_Audit',
 } as const;
