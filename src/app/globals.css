@@ -1546,6 +1546,24 @@ tr.is-saving {
   padding: 14px 16px 16px 40px;
 }
 
+/* .history-row td's own background above otherwise outranks .cell-warn's
+   (same specificity, but .history-row td comes later in the stylesheet) —
+   this two-class override wins outright so the red flag still shows here. */
+.history-row .cell-warn {
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+
+.history-panels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+}
+
+.history-panel {
+  min-width: 0;
+}
+
 .history-inline-table {
   min-width: 0;
   width: auto;

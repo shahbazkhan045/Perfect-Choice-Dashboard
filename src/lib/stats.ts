@@ -328,7 +328,7 @@ export function canxMonthSummaries(
 const monthOf = (iso: string): string => iso.slice(0, 7);
 
 /** First and last day of a yyyy-MM month, as an inclusive yyyy-MM-dd range. */
-function monthRange(month: string): { from: string; to: string } {
+export function monthRange(month: string): { from: string; to: string } {
   const [y, m] = month.split('-').map(Number);
   const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate(); // day 0 of next month = last day of this one
   return { from: `${month}-01`, to: `${month}-${String(lastDay).padStart(2, '0')}` };
@@ -564,22 +564,32 @@ export interface HistoryPoint {
   cancellationCount: number;
 }
 
-/** A cleaner's or van's Absent BD + Cancellations for `month` and the `count - 1` months before it. */
+/**
+ * A cleaner's or van's Absent BD + Cancellations for `month` and the
+ * `count - 1` months before it, current month FIRST (index 0) — the rest
+ * is context, not a timeline to read left-to-right.
+ */
 export function cleanerMonthlyHistory(
   perf: CompanyPerfRow[],
   canx: CanxRow[],
   name: string,
   groupBy: DefaulterGroupBy,
   month: string,
-  count = 2,
+  count = 4,
 ): HistoryPoint[] {
-  return recentMonths(month, count).map((m) => ({
-    label: formatMonthLabel(m),
-    ...countsForRange(perf, canx, name, groupBy, monthRange(m)),
-  }));
+  return recentMonths(month, count)
+    .map((m) => ({
+      label: formatMonthLabel(m),
+      ...countsForRange(perf, canx, name, groupBy, monthRange(m)),
+    }))
+    .reverse();
 }
 
-/** A cleaner's or van's Absent BD + Cancellations for the week `weekKey` and the `count - 1` weeks before it. */
+/**
+ * A cleaner's or van's Absent BD + Cancellations for the week `weekKey`
+ * and the `count - 1` weeks before it, current week FIRST (index 0) — same
+ * ordering as cleanerMonthlyHistory, for consistency between the two tabs.
+ */
 export function cleanerWeeklyHistory(
   perf: CompanyPerfRow[],
   canx: CanxRow[],
@@ -588,13 +598,74 @@ export function cleanerWeeklyHistory(
   weekKey: string,
   count = 3,
 ): HistoryPoint[] {
-  return recentWeekKeys(weekKey, count).map((k) => {
-    const bucket = weekBucketFor(k);
-    return {
-      label: bucket.label,
-      ...countsForRange(perf, canx, name, groupBy, { from: bucket.start, to: bucket.end }),
+  return recentWeekKeys(weekKey, count)
+    .map((k) => {
+      const bucket = weekBucketFor(k);
+      return {
+        label: bucket.label,
+        ...countsForRange(perf, canx, name, groupBy, { from: bucket.start, to: bucket.end }),
+      };
+    })
+    .reverse();
+}
+
+export interface VanCleanerBreakdown {
+  cleanerId: string;
+  cleanerName: string;
+  absentCount: number;
+  cancellationCount: number;
+}
+
+/**
+ * Every cleaner who worked a given van within a date range, ranked by
+ * `metric` (highest first) — the "who's actually behind this van's
+ * number" breakdown shown alongside a van's history.
+ */
+export function vanCleanerBreakdown(
+  perf: CompanyPerfRow[],
+  canx: CanxRow[],
+  van: string,
+  range: { from: string; to: string },
+  metric: DefaulterMetric,
+): VanCleanerBreakdown[] {
+  const inRange = (date: string) => Boolean(date) && date >= range.from && date <= range.to;
+  const rows = new Map<string, VanCleanerBreakdown>();
+
+  for (const r of perf) {
+    if (r.van !== van || !inRange(r.date) || !r.cleanerName) continue;
+    const key = r.cleanerId || r.cleanerName;
+    const row = rows.get(key) ?? {
+      cleanerId: r.cleanerId,
+      cleanerName: r.cleanerName,
+      absentCount: 0,
+      cancellationCount: 0,
     };
-  });
+    row.absentCount += r.count;
+    rows.set(key, row);
+  }
+
+  for (const r of canx) {
+    if (r.van !== van || !inRange(r.date) || !r.cleaner) continue;
+    // Cancellations never carries a cleaner ID, so it's matched by name.
+    const existingKey = [...rows.keys()].find((k) => rows.get(k)!.cleanerName === r.cleaner);
+    const key = existingKey ?? r.cleaner;
+    const row = rows.get(key) ?? {
+      cleanerId: '',
+      cleanerName: r.cleaner,
+      absentCount: 0,
+      cancellationCount: 0,
+    };
+    row.cancellationCount += r.count || 1;
+    rows.set(key, row);
+  }
+
+  return [...rows.values()]
+    .filter((r) => r.absentCount > 0 || r.cancellationCount > 0)
+    .sort((a, b) => {
+      const [primaryA, primaryB] =
+        metric === 'absent' ? [a.absentCount, b.absentCount] : [a.cancellationCount, b.cancellationCount];
+      return primaryB - primaryA || a.cleanerName.localeCompare(b.cleanerName);
+    });
 }
 
 export interface CompanyCleanerRollupFilters {

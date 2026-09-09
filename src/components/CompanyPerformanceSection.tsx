@@ -14,6 +14,8 @@ import {
   distinctCompanies,
   distinctVanNames,
   formatMonthLabel,
+  monthRange,
+  vanCleanerBreakdown,
   weekBuckets,
   type DefaulterGroupBy,
   type DefaulterMetric,
@@ -121,6 +123,24 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
       : [];
   }, [expandedEntry, defaulterView, month, selectedWeek, defaulterGroupBy, data.companyPerf, data.canx]);
 
+  // Which cleaners actually make up an expanded van's current-period
+  // number — only meaningful when grouped by van, and scoped to the same
+  // period the row itself is showing (not the multi-month/week history).
+  const vanCleaners = useMemo(() => {
+    if (!expandedEntry || defaulterGroupBy !== 'van') return [];
+    const range =
+      defaulterView === 'monthly'
+        ? month
+          ? monthRange(month)
+          : null
+        : selectedWeek
+          ? { from: selectedWeek.start, to: selectedWeek.end }
+          : null;
+    return range
+      ? vanCleanerBreakdown(data.companyPerf, data.canx, expandedEntry.name, range, defaulterMetric)
+      : [];
+  }, [expandedEntry, defaulterGroupBy, defaulterView, month, selectedWeek, defaulterMetric, data.companyPerf, data.canx]);
+
   function downloadDefaulters() {
     const nameHeader = defaulterGroupBy === 'cleaner' ? 'Cleaner' : 'Van';
     const secondaryHeader = defaulterGroupBy === 'cleaner' ? 'Van' : 'Company';
@@ -208,12 +228,12 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
             ))}
           </select>
         </div>
-        <div className="seg-toggle" role="tablist" aria-label="Company performance view">
+        <div className="company-tabs" role="tablist" aria-label="Company performance view">
           <button
             type="button"
             role="tab"
             aria-selected={view === 'overview'}
-            className={`seg-toggle-btn${view === 'overview' ? ' is-active' : ''}`}
+            className={`company-tab${view === 'overview' ? ' is-active' : ''}`}
             onClick={() => setView('overview')}
           >
             Overview
@@ -222,7 +242,7 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
             type="button"
             role="tab"
             aria-selected={view === 'rawdata'}
-            className={`seg-toggle-btn${view === 'rawdata' ? ' is-active' : ''}`}
+            className={`company-tab${view === 'rawdata' ? ' is-active' : ''}`}
             onClick={() => setView('rawdata')}
           >
             Raw Performance Data
@@ -538,35 +558,68 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
                       {expanded ? (
                         <tr className="history-row">
                           <td colSpan={5}>
-                            <table className="history-inline-table">
-                              <thead>
-                                <tr>
-                                  <th>Period</th>
-                                  <th className="num">Absent BD</th>
-                                  <th className="num">Cancellations</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {historyPoints.map((h, hi) => (
-                                  <tr
-                                    key={h.label}
-                                    className={hi === historyPoints.length - 1 ? 'history-current' : undefined}
-                                  >
-                                    <td>{h.label}</td>
-                                    <td className={`num${h.absentCount > 3 ? ' cell-warn' : ''}`}>
-                                      {h.absentCount}
-                                    </td>
-                                    <td className={`num${h.cancellationCount > 2 ? ' cell-warn' : ''}`}>
-                                      {h.cancellationCount}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                            <p className="muted cp-history-hint">
-                              Bold row is the currently selected {defaulterView === 'monthly' ? 'month' : 'week'}{' '}
-                              — the rest is recent history, so you can tell a one-off from a repeat offender.
-                            </p>
+                            <div className="history-panels">
+                              <div className="history-panel">
+                                <table className="history-inline-table">
+                                  <thead>
+                                    <tr>
+                                      <th>Period</th>
+                                      <th className="num">Absent BD</th>
+                                      <th className="num">Cancellations</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {historyPoints.map((h, hi) => (
+                                      <tr key={h.label} className={hi === 0 ? 'history-current' : undefined}>
+                                        <td>{h.label}</td>
+                                        <td className={`num${h.absentCount > 3 ? ' cell-warn' : ''}`}>
+                                          {h.absentCount}
+                                        </td>
+                                        <td className={`num${h.cancellationCount > 2 ? ' cell-warn' : ''}`}>
+                                          {h.cancellationCount}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                                <p className="muted cp-history-hint">
+                                  Top row is the currently selected {defaulterView === 'monthly' ? 'month' : 'week'}{' '}
+                                  — the rest is recent history, so you can tell a one-off from a repeat offender.
+                                </p>
+                              </div>
+
+                              {defaulterGroupBy === 'van' && vanCleaners.length ? (
+                                <div className="history-panel">
+                                  <table className="history-inline-table">
+                                    <thead>
+                                      <tr>
+                                        <th>Cleaner on this van</th>
+                                        <th className="num">Absent BD</th>
+                                        <th className="num">Cancellations</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {vanCleaners.map((c, ci) => (
+                                        <tr
+                                          key={c.cleanerId || c.cleanerName}
+                                          className={ci === 0 ? 'history-current' : undefined}
+                                        >
+                                          <td>{c.cleanerName}</td>
+                                          <td className={`num${ci === 0 ? ' cell-warn' : ''}`}>{c.absentCount}</td>
+                                          <td className={`num${ci === 0 ? ' cell-warn' : ''}`}>
+                                            {c.cancellationCount}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                  <p className="muted cp-history-hint">
+                                    Highest {defaulterMetric === 'absent' ? 'Absent BD' : 'Cancellations'} on this
+                                    van for {defaulterScopeLabel}, highlighted.
+                                  </p>
+                                </div>
+                              ) : null}
+                            </div>
                           </td>
                         </tr>
                       ) : null}
