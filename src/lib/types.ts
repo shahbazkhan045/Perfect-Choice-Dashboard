@@ -87,18 +87,23 @@ export interface CompanyPerfRow {
 }
 
 /**
- * One row of the Company Performance tab's own per-date-per-company Absent
- * BD summary (its second, right-hand mini-table) — the team's own
- * hand/formula-maintained count and percentage for that company on that
- * date. Never derived by this app; see readWorkbook() in lib/sheets.ts for
- * exactly how it's located and parsed, and stats.ts for how it's rolled up
- * into a monthly percentage per company.
+ * One row of the Company Performance tab's own per-month-per-company MTD
+ * summary (its right-hand table, columns K-Q: "Time - Year Month" /
+ * Company / Absent BD # / Absent BD % / Cancellation and Releases /
+ * Cancellation and Releases % / Avg Rating) — the team's own
+ * hand/formula-maintained figures. Read directly, never recomputed by this
+ * app; see readWorkbook() in lib/sheets.ts for exactly how it's located.
+ * `cancellationCount` / `cancellationPct` are null when the sheet hasn't
+ * filled them in yet (e.g. the current month, still in progress).
  */
-export interface CompanyAbsentDaily {
-  date: string;
+export interface CompanyMonthlyPerf {
+  /** yyyy-MM */
+  month: string;
   company: string;
-  count: number;
-  pct: number;
+  absentCount: number;
+  absentPct: number;
+  cancellationCount: number | null;
+  cancellationPct: number | null;
 }
 
 export interface DashboardData {
@@ -121,10 +126,10 @@ export interface DashboardData {
   canxTotalPct: number | null;
   /** month key (yyyy-MM) -> hand-entered cancellation rate for that month. */
   canxMonthlyPct: Record<string, number>;
-  /** Every absence event from the "Company Performance" tab, if present. */
+  /** Every roster entry from the "Company Performance" tab, if present. */
   companyPerf: CompanyPerfRow[];
-  /** That tab's own per-date-per-company Absent BD #/% summary, if present. */
-  companyAbsentDaily: CompanyAbsentDaily[];
+  /** That tab's own per-month-per-company MTD summary, if present. */
+  companyMonthly: CompanyMonthlyPerf[];
 }
 
 export interface ReminderStats {

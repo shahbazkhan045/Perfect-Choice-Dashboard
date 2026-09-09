@@ -2,7 +2,7 @@ import { google, type sheets_v4 } from 'googleapis';
 import { JWT } from 'google-auth-library';
 import { SHEET_ID, TABS } from './config';
 import { clean, formatStampCell, nowStamp, todayIso, toIsoDate, toNumber, toPercent } from './parse';
-import type { CanxRow, CashRow, CompanyAbsentDaily, CompanyPerfRow, Role, Section } from './types';
+import type { CanxRow, CashRow, CompanyMonthlyPerf, CompanyPerfRow, Role, Section } from './types';
 import { ROLE_LABELS } from './types';
 
 // ---------------------------------------------------------------------------
@@ -395,7 +395,7 @@ export interface WorkbookResult {
    */
   canxMonthlyPct: Record<string, number>;
   companyPerf: CompanyPerfRow[];
-  companyAbsentDaily: CompanyAbsentDaily[];
+  companyMonthly: CompanyMonthlyPerf[];
 }
 
 // ---------------------------------------------------------------------------
@@ -429,47 +429,44 @@ function parseCompanyPerf(grid: Grid, display: Grid): CompanyPerfRow[] {
 }
 
 /**
- * The Absent BD summary mini-table sits to the right of the raw per-event
- * table, sharing its own copy of "Time - Master Date" / "Company" headers —
- * indexHeaders() would just find the raw table's columns again, so this
- * looks for the SECOND occurrence of "Time - Master Date" in the header row
- * and reads that column plus the three that follow it (Company, Absent
- * (BD) #, Absent (BD) %), exactly as laid out in the sheet. Returns []  if
- * there's no second occurrence — i.e. the mini-table hasn't been added (or
- * has been removed), which just means no Absent BD % is available anywhere.
+ * The MTD summary table sits to the right of the raw per-event table,
+ * columns K-Q: "Time - Year Month" / Company / Absent BD # / Absent BD % /
+ * Cancellation and Releases / Cancellation and Releases % / Avg Rating.
+ * Unlike the raw table's headers, "Time - Year Month" is unique in the row
+ * (no collision to worry about), so it's just located directly; the other
+ * columns are read as fixed offsets from it, matching the sheet's layout.
+ * Returns [] if the table isn't there — the company KPI boxes just show
+ * "not set in sheet" everywhere in that case.
  */
-function parseCompanyAbsentDaily(raw: Grid, display: Grid): CompanyAbsentDaily[] {
+function parseCompanyMonthlyPerf(raw: Grid, display: Grid): CompanyMonthlyPerf[] {
   const header = raw[0] || [];
-  const wantDate = norm('Time - Master Date');
-  const dateCols: number[] = [];
-  header.forEach((h, i) => {
-    if (norm(h) === wantDate) dateCols.push(i);
-  });
-  if (dateCols.length < 2) return [];
+  const kCol = header.findIndex((h) => norm(h) === norm('Time - Year Month'));
+  if (kCol < 0) return [];
 
-  const kCol = dateCols[1];
-  const lCol = kCol + 1; // Company
-  const mCol = kCol + 2; // Absent (BD) #
-  const nCol = kCol + 3; // Absent (BD) %
+  const companyCol = kCol + 1;
+  const absentCol = kCol + 2;
+  const absentPctCol = kCol + 3;
+  const canxCol = kCol + 4;
+  const canxPctCol = kCol + 5;
 
-  const out: CompanyAbsentDaily[] = [];
+  const out: CompanyMonthlyPerf[] = [];
   for (let r = 1; r < raw.length; r++) {
-    const kText = clean(cell(raw, r, kCol));
-    // Skips both blank rows and the "Total" sentinel row, which sums BOTH
-    // companies together and so can't be attributed to just one of them —
-    // the per-company monthly rollups in stats.ts recompute a proper
-    // per-company monthly figure from these dated rows instead.
-    if (!kText || /^total$/i.test(kText)) continue;
-
     const date = toIsoDate(cell(raw, r, kCol));
-    const company = clean(cell(raw, r, lCol));
+    const company = clean(cell(raw, r, companyCol));
     if (!date || !company) continue;
 
+    const canxRaw = cell(raw, r, canxCol);
+    const canxPresent = canxRaw !== '' && canxRaw !== null && canxRaw !== undefined;
+
     out.push({
-      date,
+      month: date.slice(0, 7),
       company,
-      count: toNumber(cell(raw, r, mCol)),
-      pct: toPercent(cell(raw, r, nCol), cell(display, r, nCol)),
+      absentCount: toNumber(cell(raw, r, absentCol)),
+      absentPct: toPercent(cell(raw, r, absentPctCol), cell(display, r, absentPctCol)),
+      cancellationCount: canxPresent ? toNumber(canxRaw) : null,
+      cancellationPct: canxPresent
+        ? toPercent(cell(raw, r, canxPctCol), cell(display, r, canxPctCol))
+        : null,
     });
   }
   return out;
@@ -502,7 +499,7 @@ export async function readWorkbook(): Promise<WorkbookResult> {
   const responses = parseResponses(wb.responses.raw);
 
   const companyPerf = parseCompanyPerf(wb.companyPerf.raw, wb.companyPerf.display);
-  const companyAbsentDaily = parseCompanyAbsentDaily(wb.companyPerf.raw, wb.companyPerf.display);
+  const companyMonthly = parseCompanyMonthlyPerf(wb.companyPerf.raw, wb.companyPerf.display);
   const { vanToCompany, cleanerToCompany } = buildCompanyMaps(companyPerf);
   const companyForCanx = (van: string, cleaner: string): string =>
     vanToCompany.get(van) || cleanerToCompany.get(cleaner) || '';
@@ -606,7 +603,7 @@ export async function readWorkbook(): Promise<WorkbookResult> {
 
   const canxTotalPct = canxMonthlyPct[todayIso().slice(0, 7)] ?? null;
 
-  return { cash, canx, canxTotalPct, canxMonthlyPct, companyPerf, companyAbsentDaily };
+  return { cash, canx, canxTotalPct, canxMonthlyPct, companyPerf, companyMonthly };
 }
 
 // ---------------------------------------------------------------------------

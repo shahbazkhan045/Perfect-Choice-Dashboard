@@ -1,9 +1,9 @@
-import { daysBetween } from './parse';
+import { daysBetween, shiftIso } from './parse';
 import type {
   AnyRow,
   CanxRow,
   CashRow,
-  CompanyAbsentDaily,
+  CompanyMonthlyPerf,
   CompanyPerfRow,
   ReminderStats,
 } from './types';
@@ -312,23 +312,27 @@ export function canxMonthSummaries(
 // ---------------------------------------------------------------------------
 // Company performance
 //
-// Two data sources, joined by name rather than by any shared key:
+// Three data sources:
 //  - companyPerf: one row per (cleaner, date) roster entry — read straight
 //    off "Company Performance" columns A-F. Every cleaner scheduled that
 //    day gets a row; `count` is that row's own Absent BD value: 0 (present),
 //    0.5 (half-day absent) or 1 (full-day absent) — NOT a flag meaning "this
-//    row is an absence". A company's Absent BD total is sum(count), never a
-//    row count — most rows are 0s (someone present that day) and counting
-//    rows instead of summing was the original bug: it reported >4000
-//    "absences" for a company whose real total was ~140. Verified against
-//    the sheet's own per-date-per-company mini table: sum(count) for every
-//    (date, company) pair in the raw rows matches that mini table's own
-//    Absent BD # column exactly.
+//    row is an absence". Summed, never counted as a row (most rows are 0s).
+//  - companyMonthly: the sheet's own per-month-per-company MTD summary
+//    (columns K-Q) — the source of truth for the company KPI boxes. Never
+//    recomputed here, just looked up.
 //  - canx: Cancellations rows, each already carrying a `company` field
 //    resolved in lib/sheets.ts (van/cleaner name -> company).
 // ---------------------------------------------------------------------------
 
 const monthOf = (iso: string): string => iso.slice(0, 7);
+
+/** First and last day of a yyyy-MM month, as an inclusive yyyy-MM-dd range. */
+function monthRange(month: string): { from: string; to: string } {
+  const [y, m] = month.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate(); // day 0 of next month = last day of this one
+  return { from: `${month}-01`, to: `${month}-${String(lastDay).padStart(2, '0')}` };
+}
 
 /** Companies found in the data, most-represented first. */
 export function distinctCompanies(perf: CompanyPerfRow[]): string[] {
@@ -340,86 +344,85 @@ export function distinctCompanies(perf: CompanyPerfRow[]): string[] {
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([company]) => company);
 }
 
-/** Every yyyy-MM present in either source, newest first — feeds the month dropdown. */
-export function companyMonthOptions(perf: CompanyPerfRow[], canx: CanxRow[]): string[] {
+/** Every yyyy-MM present in any source, newest first — feeds the month dropdown. */
+export function companyMonthOptions(
+  perf: CompanyPerfRow[],
+  canx: CanxRow[],
+  monthly: CompanyMonthlyPerf[],
+): string[] {
   const months = new Set<string>();
   for (const r of perf) if (r.date) months.add(monthOf(r.date));
   for (const r of canx) if (r.date) months.add(monthOf(r.date));
+  for (const m of monthly) months.add(m.month);
   return [...months].sort((a, b) => b.localeCompare(a));
 }
 
-/**
- * A company's Absent BD % for one month, reconstructed from the sheet's own
- * per-date-per-company figures (companyAbsentDaily) rather than guessed.
- *
- * Each daily entry already IS a percentage — count/denominator — but the
- * denominator (roster size that day) is never given directly, only implied.
- * It can still be recovered exactly: denominator = count / (pct/100). Once
- * every day in the month has its denominator recovered this way, the
- * correct monthly percentage is sum(counts) / sum(denominators) — a proper
- * weighted average, not a naive mean of the daily percentages (which would
- * over-weight low-roster days). Returns null when the month has no entries
- * for this company at all (nothing recorded yet, or the mini-table doesn't
- * reach that far back).
- */
-export function companyMonthlyAbsentPct(
-  daily: CompanyAbsentDaily[],
-  company: string,
-  month: string,
-): number | null {
-  let numerator = 0;
-  let denominator = 0;
-  let seen = false;
-
-  for (const d of daily) {
-    if (d.company !== company || monthOf(d.date) !== month) continue;
-    seen = true;
-    numerator += d.count;
-    if (d.pct > 0) denominator += d.count / (d.pct / 100);
-  }
-
-  if (!seen) return null;
-  return denominator > 0 ? (numerator / denominator) * 100 : 0;
-}
-
 export interface CompanyKpis {
-  absentCount: number;
+  absentCount: number | null;
   absentPct: number | null;
-  cancellationCount: number;
-  /**
-   * The sheet's own overall monthly cancellation rate — the exact same
-   * figure the Cancellations & releases tab shows as "Total cancellation
-   * rate" for that month (canxMonthlyPct). This is NOT company-specific —
-   * the sheet only ever records one rate per month, for everyone — so both
-   * companies show the same number here by design; it's shown per company
-   * only because that's where the rest of that company's figures live.
-   * Null until the team records that month's rate.
-   */
+  cancellationCount: number | null;
   cancellationPct: number | null;
 }
 
+/** A straight lookup into the sheet's own MTD table — see the section header above. */
 export function companyKpis(
-  perf: CompanyPerfRow[],
-  canx: CanxRow[],
-  daily: CompanyAbsentDaily[],
-  canxMonthlyPct: Record<string, number>,
+  monthly: CompanyMonthlyPerf[],
   company: string,
   month: string,
 ): CompanyKpis {
-  const absentCount = perf
-    .filter((r) => r.company === company && r.date && monthOf(r.date) === month)
-    .reduce((s, r) => s + r.count, 0);
-
-  const cancellationCount = canx
-    .filter((r) => r.company === company && r.date && monthOf(r.date) === month)
-    .reduce((s, r) => s + (r.count || 1), 0);
-
+  const row = monthly.find((m) => m.company === company && m.month === month);
+  if (!row) return { absentCount: null, absentPct: null, cancellationCount: null, cancellationPct: null };
   return {
-    absentCount,
-    absentPct: companyMonthlyAbsentPct(daily, company, month),
-    cancellationCount,
-    cancellationPct: canxMonthlyPct[month] ?? null,
+    absentCount: row.absentCount,
+    absentPct: row.absentPct,
+    cancellationCount: row.cancellationCount,
+    cancellationPct: row.cancellationPct,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Weekly buckets for the Defaulters "Weekly" tab — Monday-to-Sunday weeks
+// starting from a fixed anchor date, through the week containing "today".
+// Nothing is stored: a week is just its date range, computed on the fly.
+// ---------------------------------------------------------------------------
+
+/** The first Monday tracked, per the original request. */
+export const WEEKLY_ANCHOR = '2026-07-06';
+
+export interface WeekBucket {
+  /** The Monday's yyyy-MM-dd — unique, used as the dropdown value. */
+  key: string;
+  /** e.g. "06 Jul – 12 Jul 2026". */
+  label: string;
+  start: string;
+  end: string;
+}
+
+const SHORT_MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+] as const;
+
+function formatWeekLabel(startIso: string, endIso: string): string {
+  // Built manually (day-then-month) rather than via toLocaleString, which
+  // for en-US puts the month first — the rest of the app's dates always
+  // read day-first (see formatDmy in parse.ts), so this matches.
+  const fmt = (iso: string) => {
+    const [, m, d] = iso.split('-').map(Number);
+    return `${String(d).padStart(2, '0')} ${SHORT_MONTHS[m - 1]}`;
+  };
+  return `${fmt(startIso)} – ${fmt(endIso)} ${endIso.slice(0, 4)}`;
+}
+
+/** Every Mon-Sun week from WEEKLY_ANCHOR through the week containing `today`, newest first. */
+export function weekBuckets(today: string): WeekBucket[] {
+  const out: WeekBucket[] = [];
+  let start = WEEKLY_ANCHOR;
+  while (start <= today) {
+    const end = shiftIso(start, 6);
+    out.push({ key: start, label: formatWeekLabel(start, end), start, end });
+    start = shiftIso(start, 7);
+  }
+  return out.reverse();
 }
 
 export type DefaulterMetric = 'absent' | 'cancellations';
@@ -437,18 +440,20 @@ export interface DefaulterEntry {
 }
 
 /**
- * Every cleaner (or every van), both companies combined, for one month —
- * both Absent BD and Cancellations are always computed together; `metric`
- * only picks which one the list is ranked by (ties broken by the other
- * metric, then by name).
+ * Every cleaner (or every van), both companies combined, within an
+ * inclusive date range — both Absent BD and Cancellations are always
+ * computed together; `metric` only picks which one the list is ranked by
+ * (ties broken by the other metric, then by name). Used for both the
+ * Monthly tab (range = that month) and the Weekly tab (range = one week).
  */
 export function defaultersList(
   perf: CompanyPerfRow[],
   canx: CanxRow[],
-  month: string,
+  range: { from: string; to: string },
   groupBy: DefaulterGroupBy,
   metric: DefaulterMetric,
 ): DefaulterEntry[] {
+  const inRange = (date: string) => Boolean(date) && date >= range.from && date <= range.to;
   const rows = new Map<string, DefaulterEntry>();
 
   const blank = (key: string, secondary: string, company: string): DefaulterEntry => ({
@@ -461,7 +466,7 @@ export function defaultersList(
   });
 
   for (const r of perf) {
-    if (!r.date || monthOf(r.date) !== month || !r.count) continue; // 0 = present, not an absence
+    if (!inRange(r.date) || !r.count) continue; // 0 = present, not an absence
     const key = groupBy === 'cleaner' ? r.cleanerName : r.van;
     if (!key) continue;
     const entry = rows.get(key) ?? blank(key, groupBy === 'cleaner' ? r.van : r.company, r.company);
@@ -471,7 +476,7 @@ export function defaultersList(
   }
 
   for (const r of canx) {
-    if (!r.date || monthOf(r.date) !== month) continue;
+    if (!inRange(r.date)) continue;
     const key = groupBy === 'cleaner' ? r.cleaner : r.van;
     if (!key) continue;
     const entry = rows.get(key) ?? blank(key, groupBy === 'cleaner' ? r.van : r.company, r.company);
@@ -492,7 +497,20 @@ export function defaultersList(
     });
 }
 
+/** Monthly convenience wrapper around defaultersList. */
+export function defaultersListForMonth(
+  perf: CompanyPerfRow[],
+  canx: CanxRow[],
+  month: string,
+  groupBy: DefaulterGroupBy,
+  metric: DefaulterMetric,
+): DefaulterEntry[] {
+  return defaultersList(perf, canx, monthRange(month), groupBy, metric);
+}
+
 export interface CompanyCleanerRollupFilters {
+  /** '' or undefined = both companies. */
+  company?: string;
   dateFrom?: string;
   dateTo?: string;
   cleanerName?: string;
@@ -502,17 +520,18 @@ export interface CompanyCleanerRollupFilters {
 export interface CompanyCleanerRollupRow {
   cleanerId: string;
   cleanerName: string;
+  company: string;
   van: string;
   absentCount: number;
   /**
-   * This cleaner's share of the company's total absences for the month
-   * (narrowed by the Date range too, if one's set — "what % of that
-   * stretch belongs to this cleaner" is still a meaningful question).
-   * Deliberately NOT narrowed by the Cleaner name / Van filters below:
-   * those exist to help find a row, not to shrink the population a
-   * percentage is taken against — filtering down to one cleaner would
-   * otherwise always show ~100% and the number would stop meaning
-   * anything.
+   * This cleaner's share of the filtered scope's total absences for the
+   * month (narrowed by the Company filter and Date range too, if set —
+   * "what % of that company / stretch belongs to this cleaner" is still a
+   * meaningful question). Deliberately NOT narrowed by the Cleaner name /
+   * Van filters: those exist to help find a row, not to shrink the
+   * population a percentage is taken against — filtering down to one
+   * cleaner would otherwise always show ~100% and the number would stop
+   * meaning anything.
    */
   absentShare: number;
   cancellationCount: number;
@@ -521,43 +540,45 @@ export interface CompanyCleanerRollupRow {
 }
 
 /**
- * One row per cleaner (not per event) for the selected company + month,
- * narrowed further by the filter row above the table. "In date sequence"
- * (per the original request) means sorted by each cleaner's most recent
- * activity date, oldest first.
+ * One row per cleaner (not per event) for the selected month, narrowed
+ * further by the filter row above the table (Company, Date range, Cleaner
+ * name, Van name — all optional; no Company filter means both companies
+ * combined). "In date sequence" (per the original request) means sorted by
+ * each cleaner's most recent activity date, oldest first.
  */
 export function companyCleanerRollup(
   perf: CompanyPerfRow[],
   canx: CanxRow[],
-  company: string,
   month: string,
   filters: CompanyCleanerRollupFilters,
 ): CompanyCleanerRollupRow[] {
   const cleanerTerm = (filters.cleanerName || '').trim().toLowerCase();
   const vanTerm = (filters.van || '').trim().toLowerCase();
+  const companyFilter = filters.company || '';
 
-  const inBaseScope = (date: string) => {
+  const inBaseScope = (date: string, company: string) => {
+    if (companyFilter && company !== companyFilter) return false;
     if (!date || monthOf(date) !== month) return false;
     if (filters.dateFrom && date < filters.dateFrom) return false;
     if (filters.dateTo && date > filters.dateTo) return false;
     return true;
   };
 
-  // The share denominator — company + month + date range only, so it stays
-  // stable while the Cleaner name / Van filters narrow the visible rows.
+  // The share denominator — Company filter + month + date range only, so it
+  // stays stable while the Cleaner name / Van filters narrow the visible rows.
   const totalAbsent = perf
-    .filter((r) => r.company === company && inBaseScope(r.date))
+    .filter((r) => inBaseScope(r.date, r.company))
     .reduce((s, r) => s + r.count, 0);
 
   const perfInScope = perf.filter((r) => {
-    if (r.company !== company || !inBaseScope(r.date)) return false;
+    if (!inBaseScope(r.date, r.company)) return false;
     if (cleanerTerm && !r.cleanerName.toLowerCase().includes(cleanerTerm)) return false;
     if (vanTerm && !r.van.toLowerCase().includes(vanTerm)) return false;
     return true;
   });
 
   const canxInScope = canx.filter((r) => {
-    if (r.company !== company || !inBaseScope(r.date)) return false;
+    if (!inBaseScope(r.date, r.company)) return false;
     if (cleanerTerm && !r.cleaner.toLowerCase().includes(cleanerTerm)) return false;
     if (vanTerm && !r.van.toLowerCase().includes(vanTerm)) return false;
     return true;
@@ -571,6 +592,7 @@ export function companyCleanerRollup(
     const row = rows.get(key) ?? {
       cleanerId: r.cleanerId,
       cleanerName: r.cleanerName,
+      company: r.company,
       van: r.van,
       absentCount: 0,
       absentShare: 0,
@@ -597,6 +619,7 @@ export function companyCleanerRollup(
     const row = rows.get(key) ?? {
       cleanerId: '',
       cleanerName: r.cleaner,
+      company: r.company,
       van: r.van,
       absentCount: 0,
       absentShare: 0,
@@ -621,16 +644,14 @@ export function companyCleanerRollup(
 }
 
 /** Distinct, sorted names for the searchable Cleaner name / Van name dropdowns. */
-export function distinctCleanerNames(perf: CompanyPerfRow[], company: string): string[] {
-  return [...new Set(perf.filter((r) => r.company === company).map((r) => r.cleanerName))]
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b));
+export function distinctCleanerNames(perf: CompanyPerfRow[], company?: string): string[] {
+  const scoped = company ? perf.filter((r) => r.company === company) : perf;
+  return [...new Set(scoped.map((r) => r.cleanerName))].filter(Boolean).sort((a, b) => a.localeCompare(b));
 }
 
-export function distinctVanNames(perf: CompanyPerfRow[], company: string): string[] {
-  return [...new Set(perf.filter((r) => r.company === company).map((r) => r.van))]
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b));
+export function distinctVanNames(perf: CompanyPerfRow[], company?: string): string[] {
+  const scoped = company ? perf.filter((r) => r.company === company) : perf;
+  return [...new Set(scoped.map((r) => r.van))].filter(Boolean).sort((a, b) => a.localeCompare(b));
 }
 
 // ---------------------------------------------------------------------------
