@@ -32,6 +32,7 @@ function numLabel(n: number | null): string {
 }
 
 type DefaulterView = 'monthly' | 'weekly';
+type CpView = 'overview' | 'rawdata';
 
 export default function CompanyPerformanceSection({ data }: { data: DashboardData }) {
   const companies = useMemo(() => distinctCompanies(data.companyPerf), [data.companyPerf]);
@@ -43,6 +44,9 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
 
   const [month, setMonth] = useState('');
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+  // Overview = Company performance + Defaulters; Raw data is its own view
+  // now rather than a third card stacked under those two.
+  const [view, setView] = useState<CpView>('overview');
 
   const [defaulterView, setDefaulterView] = useState<DefaulterView>('monthly');
   const [weekKey, setWeekKey] = useState('');
@@ -199,10 +203,31 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
             ))}
           </select>
         </div>
+        <div className="seg-toggle" role="tablist" aria-label="Company performance view">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'overview'}
+            className={`seg-toggle-btn${view === 'overview' ? ' is-active' : ''}`}
+            onClick={() => setView('overview')}
+          >
+            Overview
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'rawdata'}
+            className={`seg-toggle-btn${view === 'rawdata' ? ' is-active' : ''}`}
+            onClick={() => setView('rawdata')}
+          >
+            Raw Performance Data
+          </button>
+        </div>
       </div>
 
-      <div className="card cp-rawdata">
-        <div className="cp-card-head">Raw data</div>
+      {view === 'rawdata' ? (
+        <div className="card cp-rawdata">
+          <div className="cp-card-head">Raw data</div>
         <div className="toolbar cp-rawdata-toolbar">
           <div className="cp-filters">
             <select
@@ -316,8 +341,9 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
             </tbody>
           </table>
         </div>
-      </div>
-
+        </div>
+      ) : (
+        <>
       <div className="card cp-companies">
         <div className="cp-card-head">Company performance</div>
         <div className="company-tabs" role="tablist" aria-label="Choose a company">
@@ -504,6 +530,8 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
           <p className="muted cp-empty-hint">No data for this {defaulterView === 'monthly' ? 'month' : 'week'} yet.</p>
         )}
       </div>
+        </>
+      )}
 
       {historyEntry ? (
         <Modal
