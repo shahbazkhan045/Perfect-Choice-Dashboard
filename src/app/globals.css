@@ -1406,11 +1406,16 @@ tr.is-saving {
 }
 
 .cp-companies,
-.cp-defaulters {
+.cp-defaulters,
+.cp-rawdata {
   padding: 18px 20px 20px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.cp-rawdata-toolbar {
+  margin: 0;
 }
 
 .cp-card-head {
@@ -1522,6 +1527,25 @@ tr.is-saving {
   background: var(--bad-soft);
   color: var(--bad);
   border-radius: 6px;
+}
+
+.row-clickable {
+  cursor: pointer;
+}
+
+.row-clickable:hover td {
+  background: var(--surface-3);
+}
+
+/* The selected month/week in the history modal — everything else is context. */
+.history-current td {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.cp-history-hint {
+  margin: 12px 0 0;
+  font-size: 12.5px;
 }
 
 .cp-filters {

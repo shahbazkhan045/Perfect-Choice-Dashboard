@@ -508,6 +508,95 @@ export function defaultersListForMonth(
   return defaultersList(perf, canx, monthRange(month), groupBy, metric);
 }
 
+// ---------------------------------------------------------------------------
+// Per-cleaner / per-van history — so a defaulter's current-period numbers
+// can be read alongside her recent past, answering "is this a one-off or
+// chronic?" without leaving the table. Monthly shows the selected month plus
+// the one before it; Weekly shows the selected week plus the two before it —
+// both oldest first, ending at whatever period is currently selected.
+// ---------------------------------------------------------------------------
+
+function shiftMonth(month: string, delta: number): string {
+  const [y, m] = month.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+/** `count` month keys ending at (and including) `month`, oldest first. */
+function recentMonths(month: string, count: number): string[] {
+  const out: string[] = [];
+  for (let i = count - 1; i >= 0; i--) out.push(shiftMonth(month, -i));
+  return out;
+}
+
+function weekBucketFor(mondayIso: string): WeekBucket {
+  const end = shiftIso(mondayIso, 6);
+  return { key: mondayIso, label: formatWeekLabel(mondayIso, end), start: mondayIso, end };
+}
+
+/** `count` Monday keys ending at (and including) `weekKey`, oldest first. */
+function recentWeekKeys(weekKey: string, count: number): string[] {
+  const out: string[] = [];
+  for (let i = count - 1; i >= 0; i--) out.push(shiftIso(weekKey, -7 * i));
+  return out;
+}
+
+function countsForRange(
+  perf: CompanyPerfRow[],
+  canx: CanxRow[],
+  name: string,
+  groupBy: DefaulterGroupBy,
+  range: { from: string; to: string },
+): { absentCount: number; cancellationCount: number } {
+  const inRange = (date: string) => Boolean(date) && date >= range.from && date <= range.to;
+  const absentCount = perf
+    .filter((r) => inRange(r.date) && (groupBy === 'cleaner' ? r.cleanerName === name : r.van === name))
+    .reduce((s, r) => s + r.count, 0);
+  const cancellationCount = canx
+    .filter((r) => inRange(r.date) && (groupBy === 'cleaner' ? r.cleaner === name : r.van === name))
+    .reduce((s, r) => s + (r.count || 1), 0);
+  return { absentCount, cancellationCount };
+}
+
+export interface HistoryPoint {
+  label: string;
+  absentCount: number;
+  cancellationCount: number;
+}
+
+/** A cleaner's or van's Absent BD + Cancellations for `month` and the `count - 1` months before it. */
+export function cleanerMonthlyHistory(
+  perf: CompanyPerfRow[],
+  canx: CanxRow[],
+  name: string,
+  groupBy: DefaulterGroupBy,
+  month: string,
+  count = 2,
+): HistoryPoint[] {
+  return recentMonths(month, count).map((m) => ({
+    label: formatMonthLabel(m),
+    ...countsForRange(perf, canx, name, groupBy, monthRange(m)),
+  }));
+}
+
+/** A cleaner's or van's Absent BD + Cancellations for the week `weekKey` and the `count - 1` weeks before it. */
+export function cleanerWeeklyHistory(
+  perf: CompanyPerfRow[],
+  canx: CanxRow[],
+  name: string,
+  groupBy: DefaulterGroupBy,
+  weekKey: string,
+  count = 3,
+): HistoryPoint[] {
+  return recentWeekKeys(weekKey, count).map((k) => {
+    const bucket = weekBucketFor(k);
+    return {
+      label: bucket.label,
+      ...countsForRange(perf, canx, name, groupBy, { from: bucket.start, to: bucket.end }),
+    };
+  });
+}
+
 export interface CompanyCleanerRollupFilters {
   /** '' or undefined = both companies. */
   company?: string;

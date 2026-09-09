@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { DashboardData } from '@/lib/types';
 import {
+  cleanerMonthlyHistory,
+  cleanerWeeklyHistory,
   companyCleanerRollup,
   companyKpis,
   companyMonthOptions,
@@ -13,12 +15,13 @@ import {
   distinctVanNames,
   formatMonthLabel,
   weekBuckets,
+  type DefaulterEntry,
   type DefaulterGroupBy,
   type DefaulterMetric,
 } from '@/lib/stats';
 import { formatDmy } from '@/lib/parse';
 import { downloadCsv, toCsv } from '@/lib/csv';
-import { Kpi } from '@/components/ui';
+import { Kpi, Modal } from '@/components/ui';
 
 function pctLabel(pct: number | null): string {
   return pct != null ? `${pct.toFixed(2)}%` : '—';
@@ -45,6 +48,7 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
   const [weekKey, setWeekKey] = useState('');
   const [defaulterGroupBy, setDefaulterGroupBy] = useState<DefaulterGroupBy>('cleaner');
   const [defaulterMetric, setDefaulterMetric] = useState<DefaulterMetric>('absent');
+  const [historyEntry, setHistoryEntry] = useState<DefaulterEntry | null>(null);
 
   const [rawCompanyFilter, setRawCompanyFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -88,6 +92,25 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
 
   const defaulterScopeLabel =
     defaulterView === 'monthly' ? formatMonthLabel(month) : (selectedWeek?.label ?? '');
+
+  // History always reflects whichever grouping produced the row that was
+  // clicked — reset it whenever that grouping (or the view) changes, since
+  // a cleaner's history and a van's history are different questions.
+  useEffect(() => {
+    setHistoryEntry(null);
+  }, [defaulterView, defaulterGroupBy]);
+
+  const historyPoints = useMemo(() => {
+    if (!historyEntry) return [];
+    if (defaulterView === 'monthly') {
+      return month
+        ? cleanerMonthlyHistory(data.companyPerf, data.canx, historyEntry.name, defaulterGroupBy, month)
+        : [];
+    }
+    return selectedWeek
+      ? cleanerWeeklyHistory(data.companyPerf, data.canx, historyEntry.name, defaulterGroupBy, selectedWeek.key)
+      : [];
+  }, [historyEntry, defaulterView, month, selectedWeek, defaulterGroupBy, data.companyPerf, data.canx]);
 
   function downloadDefaulters() {
     const nameHeader = defaulterGroupBy === 'cleaner' ? 'Cleaner' : 'Van';
@@ -175,6 +198,123 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
               </option>
             ))}
           </select>
+        </div>
+      </div>
+
+      <div className="card cp-rawdata">
+        <div className="cp-card-head">Raw data</div>
+        <div className="toolbar cp-rawdata-toolbar">
+          <div className="cp-filters">
+            <select
+              className="cp-company-select"
+              value={rawCompanyFilter}
+              onChange={(e) => setRawCompanyFilter(e.target.value)}
+              aria-label="Filter by company"
+            >
+              <option value="">All companies</option>
+              {companies.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            <span className="cp-range">
+              <input
+                type="date"
+                className="cp-date-input"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                aria-label="From date"
+              />
+              <span className="cp-range-sep">to</span>
+              <input
+                type="date"
+                className="cp-date-input"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                aria-label="To date"
+              />
+            </span>
+            <input
+              type="text"
+              className="table-search"
+              list="cp-cleaner-options"
+              value={cleanerFilter}
+              onChange={(e) => setCleanerFilter(e.target.value)}
+              placeholder="Cleaner name…"
+              aria-label="Filter by cleaner name"
+            />
+            <datalist id="cp-cleaner-options">
+              {cleanerOptions.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+            <input
+              type="text"
+              className="table-search"
+              list="cp-van-options"
+              value={vanFilter}
+              onChange={(e) => setVanFilter(e.target.value)}
+              placeholder="Van name…"
+              aria-label="Filter by van name"
+            />
+            <datalist id="cp-van-options">
+              {vanOptions.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+            {hasFilters ? (
+              <button type="button" className="btn" onClick={clearFilters}>
+                Clear filters
+              </button>
+            ) : null}
+          </div>
+          <div className="toolbar-actions">
+            <button type="button" className="btn" onClick={download} disabled={!rollup.length}>
+              ⬇ Download
+            </button>
+          </div>
+        </div>
+
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Cleaner ID</th>
+                <th>Cleaner name</th>
+                <th>Company</th>
+                <th>Van</th>
+                <th className="num">Absent BD</th>
+                <th className="num">Absent BD % (share)</th>
+                <th className="num">Cancellations</th>
+                <th>Last activity</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rollup.length ? (
+                rollup.map((r) => (
+                  <tr key={`${r.cleanerId || r.cleanerName}`}>
+                    <td className="mono">{r.cleanerId || <span className="muted">—</span>}</td>
+                    <td className="strong">{r.cleanerName}</td>
+                    <td>{r.company || <span className="muted">—</span>}</td>
+                    <td className="van" title={r.van}>
+                      {r.van || <span className="muted">—</span>}
+                    </td>
+                    <td className="num">{r.absentCount}</td>
+                    <td className="num">{r.absentShare.toFixed(2)}%</td>
+                    <td className="num">{r.cancellationCount}</td>
+                    <td>{formatDmy(r.lastDate)}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={8} className="table-msg">
+                    {hasFilters ? 'No rows match your filters.' : 'No data for this view.'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -312,7 +452,9 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
           </div>
         </div>
 
-        <p className="muted cp-defaulters-scope">{defaulterScopeLabel}</p>
+        <p className="muted cp-defaulters-scope">
+          {defaulterScopeLabel} · click a row to see its recent history
+        </p>
 
         {defaulters.length ? (
           <div className="table-scroll cp-defaulters-scroll">
@@ -328,7 +470,20 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
               </thead>
               <tbody>
                 {defaulters.map((d, i) => (
-                  <tr key={d.key}>
+                  <tr
+                    key={d.key}
+                    className="row-clickable"
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`See history for ${d.name}`}
+                    onClick={() => setHistoryEntry(d)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setHistoryEntry(d);
+                      }
+                    }}
+                  >
                     <td className="muted">{i + 1}</td>
                     <td className="strong">{d.name}</td>
                     <td className="van" title={d.secondary}>
@@ -350,121 +505,35 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
         )}
       </div>
 
-      <div className="toolbar">
-        <div className="cp-filters">
-          <select
-            className="cp-company-select"
-            value={rawCompanyFilter}
-            onChange={(e) => setRawCompanyFilter(e.target.value)}
-            aria-label="Filter by company"
-          >
-            <option value="">All companies</option>
-            {companies.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-          <span className="cp-range">
-            <input
-              type="date"
-              className="cp-date-input"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              aria-label="From date"
-            />
-            <span className="cp-range-sep">to</span>
-            <input
-              type="date"
-              className="cp-date-input"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              aria-label="To date"
-            />
-          </span>
-          <input
-            type="text"
-            className="table-search"
-            list="cp-cleaner-options"
-            value={cleanerFilter}
-            onChange={(e) => setCleanerFilter(e.target.value)}
-            placeholder="Cleaner name…"
-            aria-label="Filter by cleaner name"
-          />
-          <datalist id="cp-cleaner-options">
-            {cleanerOptions.map((name) => (
-              <option key={name} value={name} />
-            ))}
-          </datalist>
-          <input
-            type="text"
-            className="table-search"
-            list="cp-van-options"
-            value={vanFilter}
-            onChange={(e) => setVanFilter(e.target.value)}
-            placeholder="Van name…"
-            aria-label="Filter by van name"
-          />
-          <datalist id="cp-van-options">
-            {vanOptions.map((name) => (
-              <option key={name} value={name} />
-            ))}
-          </datalist>
-          {hasFilters ? (
-            <button type="button" className="btn" onClick={clearFilters}>
-              Clear filters
-            </button>
-          ) : null}
-        </div>
-        <div className="toolbar-actions">
-          <button type="button" className="btn" onClick={download} disabled={!rollup.length}>
-            ⬇ Download
-          </button>
-        </div>
-      </div>
-
-      <div className="card table-card">
-        <div className="table-scroll">
+      {historyEntry ? (
+        <Modal
+          title={`${defaulterGroupBy === 'cleaner' ? 'Cleaner' : 'Van'} history — ${historyEntry.name}`}
+          onClose={() => setHistoryEntry(null)}
+        >
           <table>
             <thead>
               <tr>
-                <th>Cleaner ID</th>
-                <th>Cleaner name</th>
-                <th>Company</th>
-                <th>Van</th>
+                <th>Period</th>
                 <th className="num">Absent BD</th>
-                <th className="num">Absent BD % (share)</th>
                 <th className="num">Cancellations</th>
-                <th>Last activity</th>
               </tr>
             </thead>
             <tbody>
-              {rollup.length ? (
-                rollup.map((r) => (
-                  <tr key={`${r.cleanerId || r.cleanerName}`}>
-                    <td className="mono">{r.cleanerId || <span className="muted">—</span>}</td>
-                    <td className="strong">{r.cleanerName}</td>
-                    <td>{r.company || <span className="muted">—</span>}</td>
-                    <td className="van" title={r.van}>
-                      {r.van || <span className="muted">—</span>}
-                    </td>
-                    <td className="num">{r.absentCount}</td>
-                    <td className="num">{r.absentShare.toFixed(2)}%</td>
-                    <td className="num">{r.cancellationCount}</td>
-                    <td>{formatDmy(r.lastDate)}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={8} className="table-msg">
-                    {hasFilters ? 'No rows match your filters.' : 'No data for this view.'}
-                  </td>
+              {historyPoints.map((h, i) => (
+                <tr key={h.label} className={i === historyPoints.length - 1 ? 'history-current' : undefined}>
+                  <td>{h.label}</td>
+                  <td className={`num${h.absentCount > 3 ? ' cell-warn' : ''}`}>{h.absentCount}</td>
+                  <td className={`num${h.cancellationCount > 2 ? ' cell-warn' : ''}`}>{h.cancellationCount}</td>
                 </tr>
-              )}
+              ))}
             </tbody>
           </table>
-        </div>
-      </div>
+          <p className="muted cp-history-hint">
+            Bold row is the currently selected {defaulterView === 'monthly' ? 'month' : 'week'} — the rest is
+            recent history, so you can tell a one-off from a repeat offender.
+          </p>
+        </Modal>
+      ) : null}
     </section>
   );
 }
