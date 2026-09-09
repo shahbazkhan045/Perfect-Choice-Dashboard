@@ -1537,14 +1537,33 @@ tr.is-saving {
   background: var(--surface-3);
 }
 
-/* The selected month/week in the history modal — everything else is context. */
+/* The inline history panel that slides open below a clicked defaulter row —
+   spans the full table width via colSpan, so its own table is deliberately
+   NOT forced to the outer table's 940px min-width: that's exactly what
+   caused the old popup to need horizontal scrolling. */
+.history-row td {
+  background: var(--surface-2);
+  padding: 14px 16px 16px 40px;
+}
+
+.history-inline-table {
+  min-width: 0;
+  width: auto;
+}
+
+.history-inline-table th,
+.history-inline-table td {
+  padding: 8px 14px;
+}
+
+/* The selected month/week in the history panel — everything else is context. */
 .history-current td {
   color: var(--text);
   font-weight: 700;
 }
 
 .cp-history-hint {
-  margin: 12px 0 0;
+  margin: 10px 0 0;
   font-size: 12.5px;
 }
 

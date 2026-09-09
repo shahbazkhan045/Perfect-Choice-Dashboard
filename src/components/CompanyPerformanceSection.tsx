@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { DashboardData } from '@/lib/types';
 import {
   cleanerMonthlyHistory,
@@ -15,13 +15,12 @@ import {
   distinctVanNames,
   formatMonthLabel,
   weekBuckets,
-  type DefaulterEntry,
   type DefaulterGroupBy,
   type DefaulterMetric,
 } from '@/lib/stats';
 import { formatDmy } from '@/lib/parse';
 import { downloadCsv, toCsv } from '@/lib/csv';
-import { Kpi, Modal } from '@/components/ui';
+import { Kpi } from '@/components/ui';
 
 function pctLabel(pct: number | null): string {
   return pct != null ? `${pct.toFixed(2)}%` : '—';
@@ -52,7 +51,11 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
   const [weekKey, setWeekKey] = useState('');
   const [defaulterGroupBy, setDefaulterGroupBy] = useState<DefaulterGroupBy>('cleaner');
   const [defaulterMetric, setDefaulterMetric] = useState<DefaulterMetric>('absent');
-  const [historyEntry, setHistoryEntry] = useState<DefaulterEntry | null>(null);
+  // Which defaulter row is expanded inline (its `key`) — at most one at a
+  // time, shown as an extra row right below it rather than a popup, so the
+  // history table has the full table width to lay out in instead of a
+  // cramped box that needs its own horizontal scroll.
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   const [rawCompanyFilter, setRawCompanyFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -98,23 +101,25 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
     defaulterView === 'monthly' ? formatMonthLabel(month) : (selectedWeek?.label ?? '');
 
   // History always reflects whichever grouping produced the row that was
-  // clicked — reset it whenever that grouping (or the view) changes, since
-  // a cleaner's history and a van's history are different questions.
+  // expanded — collapse it whenever that grouping (or the view) changes,
+  // since a cleaner's history and a van's history are different questions.
   useEffect(() => {
-    setHistoryEntry(null);
+    setExpandedKey(null);
   }, [defaulterView, defaulterGroupBy]);
 
+  const expandedEntry = defaulters.find((d) => d.key === expandedKey);
+
   const historyPoints = useMemo(() => {
-    if (!historyEntry) return [];
+    if (!expandedEntry) return [];
     if (defaulterView === 'monthly') {
       return month
-        ? cleanerMonthlyHistory(data.companyPerf, data.canx, historyEntry.name, defaulterGroupBy, month)
+        ? cleanerMonthlyHistory(data.companyPerf, data.canx, expandedEntry.name, defaulterGroupBy, month)
         : [];
     }
     return selectedWeek
-      ? cleanerWeeklyHistory(data.companyPerf, data.canx, historyEntry.name, defaulterGroupBy, selectedWeek.key)
+      ? cleanerWeeklyHistory(data.companyPerf, data.canx, expandedEntry.name, defaulterGroupBy, selectedWeek.key)
       : [];
-  }, [historyEntry, defaulterView, month, selectedWeek, defaulterGroupBy, data.companyPerf, data.canx]);
+  }, [expandedEntry, defaulterView, month, selectedWeek, defaulterGroupBy, data.companyPerf, data.canx]);
 
   function downloadDefaulters() {
     const nameHeader = defaulterGroupBy === 'cleaner' ? 'Cleaner' : 'Van';
@@ -479,7 +484,7 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
         </div>
 
         <p className="muted cp-defaulters-scope">
-          {defaulterScopeLabel} · click a row to see its recent history
+          {defaulterScopeLabel} · click a row to expand its recent history
         </p>
 
         {defaulters.length ? (
@@ -495,34 +500,79 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
                 </tr>
               </thead>
               <tbody>
-                {defaulters.map((d, i) => (
-                  <tr
-                    key={d.key}
-                    className="row-clickable"
-                    tabIndex={0}
-                    role="button"
-                    aria-label={`See history for ${d.name}`}
-                    onClick={() => setHistoryEntry(d)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setHistoryEntry(d);
-                      }
-                    }}
-                  >
-                    <td className="muted">{i + 1}</td>
-                    <td className="strong">{d.name}</td>
-                    <td className="van" title={d.secondary}>
-                      {d.secondary || <span className="muted">—</span>}
-                    </td>
-                    <td className={`num${d.absentCount > 3 ? ' cell-warn' : ''}`}>
-                      {d.absentCount || <span className="muted">0</span>}
-                    </td>
-                    <td className={`num${d.cancellationCount > 2 ? ' cell-warn' : ''}`}>
-                      {d.cancellationCount || <span className="muted">0</span>}
-                    </td>
-                  </tr>
-                ))}
+                {defaulters.map((d, i) => {
+                  const expanded = d.key === expandedKey;
+                  return (
+                    <Fragment key={d.key}>
+                      <tr
+                        className="row-clickable"
+                        tabIndex={0}
+                        role="button"
+                        aria-expanded={expanded}
+                        aria-label={`${expanded ? 'Hide' : 'Show'} history for ${d.name}`}
+                        onClick={() => setExpandedKey(expanded ? null : d.key)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setExpandedKey(expanded ? null : d.key);
+                          }
+                        }}
+                      >
+                        <td className="muted">{i + 1}</td>
+                        <td className="strong">
+                          {d.name}
+                          <span className="month-arrow" aria-hidden="true">
+                            {expanded ? '▾' : '▸'}
+                          </span>
+                        </td>
+                        <td className="van" title={d.secondary}>
+                          {d.secondary || <span className="muted">—</span>}
+                        </td>
+                        <td className={`num${d.absentCount > 3 ? ' cell-warn' : ''}`}>
+                          {d.absentCount || <span className="muted">0</span>}
+                        </td>
+                        <td className={`num${d.cancellationCount > 2 ? ' cell-warn' : ''}`}>
+                          {d.cancellationCount || <span className="muted">0</span>}
+                        </td>
+                      </tr>
+                      {expanded ? (
+                        <tr className="history-row">
+                          <td colSpan={5}>
+                            <table className="history-inline-table">
+                              <thead>
+                                <tr>
+                                  <th>Period</th>
+                                  <th className="num">Absent BD</th>
+                                  <th className="num">Cancellations</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {historyPoints.map((h, hi) => (
+                                  <tr
+                                    key={h.label}
+                                    className={hi === historyPoints.length - 1 ? 'history-current' : undefined}
+                                  >
+                                    <td>{h.label}</td>
+                                    <td className={`num${h.absentCount > 3 ? ' cell-warn' : ''}`}>
+                                      {h.absentCount}
+                                    </td>
+                                    <td className={`num${h.cancellationCount > 2 ? ' cell-warn' : ''}`}>
+                                      {h.cancellationCount}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            <p className="muted cp-history-hint">
+                              Bold row is the currently selected {defaulterView === 'monthly' ? 'month' : 'week'}{' '}
+                              — the rest is recent history, so you can tell a one-off from a repeat offender.
+                            </p>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -532,36 +582,6 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
       </div>
         </>
       )}
-
-      {historyEntry ? (
-        <Modal
-          title={`${defaulterGroupBy === 'cleaner' ? 'Cleaner' : 'Van'} history — ${historyEntry.name}`}
-          onClose={() => setHistoryEntry(null)}
-        >
-          <table>
-            <thead>
-              <tr>
-                <th>Period</th>
-                <th className="num">Absent BD</th>
-                <th className="num">Cancellations</th>
-              </tr>
-            </thead>
-            <tbody>
-              {historyPoints.map((h, i) => (
-                <tr key={h.label} className={i === historyPoints.length - 1 ? 'history-current' : undefined}>
-                  <td>{h.label}</td>
-                  <td className={`num${h.absentCount > 3 ? ' cell-warn' : ''}`}>{h.absentCount}</td>
-                  <td className={`num${h.cancellationCount > 2 ? ' cell-warn' : ''}`}>{h.cancellationCount}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="muted cp-history-hint">
-            Bold row is the currently selected {defaulterView === 'monthly' ? 'month' : 'week'} — the rest is
-            recent history, so you can tell a one-off from a repeat offender.
-          </p>
-        </Modal>
-      ) : null}
     </section>
   );
 }
