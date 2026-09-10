@@ -10,6 +10,75 @@ import { formatDmy } from '@/lib/parse';
 
 export type Tone = 'plain' | 'good' | 'bad' | 'warn';
 
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    !!window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
+
+/**
+ * Counts a KPI's leading number up to its target when the value changes.
+ * Purely cosmetic — the prefix (e.g. "AED "), the suffix (e.g. "%"), the
+ * decimal places and the thousands grouping are all taken from the real
+ * formatted string, so the number that lands is exactly `value`. Anything
+ * without a number in it (e.g. "—") is passed straight through.
+ */
+function useCountUp(value: string): string {
+  const [display, setDisplay] = useState(value);
+  const rafRef = useRef<number | undefined>(undefined);
+  const prevNumRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const match = value.match(/-?\d[\d,]*(\.\d+)?/);
+    if (!match || prefersReducedMotion()) {
+      setDisplay(value);
+      prevNumRef.current = match ? parseFloat(match[0].replace(/,/g, '')) : null;
+      return;
+    }
+
+    const target = parseFloat(match[0].replace(/,/g, ''));
+    const decimals = match[1] ? match[1].length - 1 : 0;
+    const grouped = match[0].includes(',');
+    const from = prevNumRef.current ?? 0;
+
+    if (from === target) {
+      setDisplay(value);
+      return;
+    }
+
+    const fmt = (n: number) =>
+      n.toLocaleString('en-US', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+        useGrouping: grouped,
+      });
+
+    const start = performance.now();
+    const duration = 650;
+
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const current = from + (target - from) * eased;
+      setDisplay(value.replace(match[0], fmt(current)));
+      if (t < 1) {
+        rafRef.current = requestAnimationFrame(tick);
+      } else {
+        prevNumRef.current = target;
+      }
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [value]);
+
+  return display;
+}
+
 export function Kpi({
   label,
   value,
@@ -21,14 +90,47 @@ export function Kpi({
   unit?: string;
   tone?: Tone;
 }) {
+  const shown = useCountUp(value);
   return (
     <div className="kpi">
       <span className="kpi-label">{label}</span>
       <span className={`kpi-value tone-${tone}`}>
-        {value}
+        {shown}
         {unit ? <small>{unit}</small> : null}
       </span>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Refresh button — spins its icon briefly on click. Cosmetic only; the
+// actual refresh is whatever `onRefresh` does.
+// ---------------------------------------------------------------------------
+
+export function RefreshButton({ onRefresh }: { onRefresh: () => void }) {
+  const [spinning, setSpinning] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+
+  return (
+    <button
+      type="button"
+      className="btn btn-refresh"
+      onClick={() => {
+        onRefresh();
+        setSpinning(true);
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = setTimeout(() => setSpinning(false), 700);
+      }}
+    >
+      <span className={`refresh-icon${spinning ? ' is-spinning' : ''}`} aria-hidden="true">
+        ⟳
+      </span>
+      Refresh
+    </button>
   );
 }
 

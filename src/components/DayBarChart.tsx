@@ -141,6 +141,7 @@ export default function DayBarChart({
                       rx={rounded ? CORNER : 0}
                       fill={`var(${s.colorVar})`}
                       className="chart-bar"
+                      style={{ animationDelay: `${i * 28}ms` }}
                     />
                   );
                 })}

@@ -13,7 +13,15 @@ import {
 } from '@/lib/stats';
 import { formatDmy } from '@/lib/parse';
 import { downloadCsv, toCsv } from '@/lib/csv';
-import { AgeBadge, EmptyBanner, FallbackBanner, Filters, Kpi, ReasonField } from '@/components/ui';
+import {
+  AgeBadge,
+  EmptyBanner,
+  FallbackBanner,
+  Filters,
+  Kpi,
+  ReasonField,
+  RefreshButton,
+} from '@/components/ui';
 import DayBarChart, { type DayDatum } from '@/components/DayBarChart';
 import type { SectionProps } from '@/components/Dashboard';
 
@@ -273,9 +281,7 @@ export default function CashSection({
             }
             aria-label="Search cash entries"
           />
-          <button type="button" className="btn" onClick={onRefresh}>
-            Refresh
-          </button>
+          <RefreshButton onRefresh={onRefresh} />
           <button
             type="button"
             className="btn"

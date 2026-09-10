@@ -152,6 +152,7 @@ code {
 :focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
+  border-radius: 6px;
 }
 
 /* ==========================================================================
@@ -229,13 +230,14 @@ code {
   width: 34px;
   height: 34px;
   border-radius: 9px;
-  background: var(--brand);
+  background: linear-gradient(135deg, var(--brand), var(--brand-ink));
   color: #fff;
   display: grid;
   place-items: center;
   font-weight: 700;
   font-size: 17px;
   flex: none;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--brand) 35%, transparent);
 }
 
 .brand-text {
@@ -330,6 +332,7 @@ code {
 }
 
 .section-tab {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -342,7 +345,21 @@ code {
   color: var(--muted);
   cursor: pointer;
   white-space: nowrap;
-  transition: color 0.15s, border-color 0.15s;
+  transition: color 0.15s;
+}
+
+.section-tab::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--brand);
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .section-tab:hover {
@@ -351,7 +368,10 @@ code {
 
 .section-tab.is-active {
   color: var(--text);
-  border-bottom-color: var(--brand);
+}
+
+.section-tab.is-active::after {
+  transform: scaleX(1);
 }
 
 .count-badge {
@@ -452,6 +472,33 @@ code {
   flex-direction: column;
   gap: 10px;
   min-height: 96px;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  animation: kpiIn 0.42s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.kpi:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.kpi-row .kpi:nth-child(2) {
+  animation-delay: 0.05s;
+}
+.kpi-row .kpi:nth-child(3) {
+  animation-delay: 0.1s;
+}
+.kpi-row .kpi:nth-child(4) {
+  animation-delay: 0.15s;
+}
+.kpi-row .kpi:nth-child(5) {
+  animation-delay: 0.2s;
+}
+
+@keyframes kpiIn {
+  from {
+    opacity: 0;
+    transform: translateY(9px);
+  }
 }
 
 .kpi-label {
@@ -471,6 +518,7 @@ code {
   display: flex;
   align-items: baseline;
   gap: 7px;
+  font-variant-numeric: tabular-nums;
 }
 
 .kpi-value small {
@@ -520,6 +568,16 @@ code {
   background: var(--viz-awaiting);
   overflow: hidden;
   gap: 2px; /* surface gap between segments */
+  animation: barWipe 0.6s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes barWipe {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
 }
 
 .seg {
@@ -606,7 +664,11 @@ code {
   border-radius: 7px;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s, transform 0.1s ease;
+}
+
+.filter:active {
+  transform: scale(0.96);
 }
 
 .filter:hover:not(.is-active) {
@@ -662,11 +724,37 @@ code {
   border-radius: var(--radius-sm);
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s, transform 0.1s ease;
 }
 
 .btn:hover:not(:disabled) {
   background: var(--surface-2);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.refresh-icon {
+  display: inline-block;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.refresh-icon.is-spinning {
+  animation: spin 0.7s linear;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .btn:disabled {
@@ -807,6 +895,15 @@ code {
 
 .chart-bar {
   transition: opacity 0.15s;
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: barGrow 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes barGrow {
+  from {
+    transform: scaleY(0);
+  }
 }
 
 .chart-empty {
@@ -831,6 +928,14 @@ code {
   pointer-events: none;
   white-space: nowrap;
   z-index: 5;
+  animation: tipIn 0.14s ease both;
+}
+
+@keyframes tipIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-3px);
+  }
 }
 
 .chart-tip strong {
@@ -1170,6 +1275,17 @@ tr.is-saving {
 .age-crit {
   background: var(--bad-soft);
   color: var(--bad);
+  animation: agePulse 2.2s ease-in-out infinite;
+}
+
+@keyframes agePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--bad) 30%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--bad) 0%, transparent);
+  }
 }
 
 /* ==========================================================================
@@ -1212,11 +1328,13 @@ tr.is-saving {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .skeleton {
-    animation: none;
-  }
-  * {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -1245,6 +1363,14 @@ tr.is-saving {
   font-size: 13px;
   font-weight: 600;
   max-width: min(92vw, 560px);
+  animation: toastIn 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.96);
+  }
 }
 
 .toast-ok {
@@ -1265,6 +1391,13 @@ tr.is-saving {
   place-items: center;
   padding: 20px;
   z-index: 150;
+  animation: scrimIn 0.18s ease both;
+}
+
+@keyframes scrimIn {
+  from {
+    opacity: 0;
+  }
 }
 
 .modal {
@@ -1276,6 +1409,14 @@ tr.is-saving {
   max-height: min(86dvh, 860px);
   display: flex;
   flex-direction: column;
+  animation: modalIn 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
 }
 
 .modal-wide {
@@ -1455,7 +1596,8 @@ tr.is-saving {
   padding: 9px 14px;
   border-radius: 999px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s ease,
+    box-shadow 0.15s;
 }
 
 .company-tab:hover {
@@ -1463,10 +1605,15 @@ tr.is-saving {
   color: var(--text);
 }
 
+.company-tab:active {
+  transform: scale(0.97);
+}
+
 .company-tab.is-active {
   background: var(--brand);
   border-color: var(--brand);
   color: #fff;
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--brand) 30%, transparent);
 }
 
 .cp-empty-hint {
@@ -1497,6 +1644,11 @@ tr.is-saving {
   border-radius: 6px;
   cursor: pointer;
   white-space: nowrap;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s, transform 0.1s ease;
+}
+
+.seg-toggle-btn:active {
+  transform: scale(0.95);
 }
 
 .seg-toggle-btn.is-active {
@@ -1618,6 +1770,84 @@ tr.is-saving {
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text);
+}
+
+/* ==========================================================================
+   Motion & polish
+   Presentation only — no layout, data or behaviour changes. Every keyframe
+   here is neutralised by the prefers-reduced-motion block above.
+   ========================================================================== */
+
+/* Whole page eases in on first paint. */
+.page {
+  animation: pageIn 0.4s ease both;
+}
+
+@keyframes pageIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* Cards feel responsive to the pointer. */
+.card {
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.chart-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+/* Company Performance panes fade + rise as you switch between them
+   (Overview / Raw Performance Data) or pick a company. */
+.cp-rawdata,
+.cp-companies,
+.cp-defaulters {
+  animation: paneIn 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes paneIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* The defaulter history panel slides down as it opens. */
+.history-row .history-panels {
+  animation: historyReveal 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes historyReveal {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+/* Newly rendered table rows fade in (existing rows are untouched — the
+   animation only runs when the row's DOM node is first created). */
+tbody tr {
+  animation: rowFade 0.25s ease both;
+}
+
+@keyframes rowFade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Banners drop in when they appear. */
+.banner {
+  animation: bannerIn 0.28s ease both;
+}
+
+@keyframes bannerIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
 }
 
 /* ==========================================================================

@@ -21,6 +21,7 @@ import {
   Kpi,
   Modal,
   ReasonField,
+  RefreshButton,
 } from '@/components/ui';
 import DayBarChart, { type DayDatum } from '@/components/DayBarChart';
 import type { SectionProps } from '@/components/Dashboard';
@@ -207,9 +208,7 @@ export default function CanxSection({
             placeholder={isMonthList ? 'Search month…' : 'Search cleaner, van, code…'}
             aria-label="Search cancellations"
           />
-          <button type="button" className="btn" onClick={onRefresh}>
-            Refresh
-          </button>
+          <RefreshButton onRefresh={onRefresh} />
           <button
             type="button"
             className="btn"
