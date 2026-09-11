@@ -819,13 +819,22 @@ export function distinctVanNames(perf: CompanyPerfRow[], company?: string): stri
 // ---------------------------------------------------------------------------
 
 /**
- * Counts everything still outstanding, regardless of date — that is what the
- * partner actually has to action, not just what happened yesterday.
+ * Scoped to the current month only — once a month ends it's closed, its
+ * totals already live in the Month to date archive, and it should stop
+ * being counted as something the partner still has to action today. A
+ * cash entry or cancellation from last month that's still unanswered
+ * won't show up here; it shows up in that month's Month to date row
+ * instead. Mirrors the same "current month only" rule the Updated tab
+ * uses (see applyFilter's 'updated' branch above).
  */
 export function reminderStats(cash: CashRow[], canx: CanxRow[], today: string): ReminderStats {
-  const pendingCash = cash.filter((r) => !isCashAnswered(r));
-  const notCollected = cash.filter((r) => r.status === 'Not collected');
-  const awaitingReason = canx.filter((r) => !isCanxAnswered(r));
+  const month = today.slice(0, 7);
+  const cashThisMonth = cash.filter((r) => r.date.startsWith(month));
+  const canxThisMonth = canx.filter((r) => r.date.startsWith(month));
+
+  const pendingCash = cashThisMonth.filter((r) => !isCashAnswered(r));
+  const notCollected = cashThisMonth.filter((r) => r.status === 'Not collected');
+  const awaitingReason = canxThisMonth.filter((r) => !isCanxAnswered(r));
 
   let oldest = '';
   for (const r of [...pendingCash, ...awaitingReason]) {
@@ -837,14 +846,14 @@ export function reminderStats(cash: CashRow[], canx: CanxRow[], today: string): 
     pendingCashCount: pendingCash.length,
     pendingCashAmount: pendingCash.reduce((s, r) => s + r.amount, 0),
     uncollectedAmount: notCollected.reduce((s, r) => s + r.amount, 0),
-    collectedAmount: cash
+    collectedAmount: cashThisMonth
       .filter((r) => r.status === 'Collected')
       .reduce((s, r) => s + r.amount, 0),
     notCollectedCount: notCollected.length,
     noTicketCount: notCollected.filter((r) => r.ticket !== 'Yes').length,
     awaitingReasonCount: awaitingReason.length,
-    reasonsProvidedCount: canx.length - awaitingReason.length,
-    totalCanx: canx.length,
+    reasonsProvidedCount: canxThisMonth.length - awaitingReason.length,
+    totalCanx: canxThisMonth.length,
     oldestPending: oldest,
     oldestAgeDays: oldest ? Math.max(0, daysBetween(oldest, today)) : 0,
   };
