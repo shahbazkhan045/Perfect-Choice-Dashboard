@@ -448,6 +448,9 @@ function parseCompanyMonthlyPerf(raw: Grid, display: Grid): CompanyMonthlyPerf[]
   const absentPctCol = kCol + 3;
   const canxCol = kCol + 4;
   const canxPctCol = kCol + 5;
+  const ratingCol = kCol + 6;
+
+  const present = (v: unknown) => v !== '' && v !== null && v !== undefined;
 
   const out: CompanyMonthlyPerf[] = [];
   for (let r = 1; r < raw.length; r++) {
@@ -456,7 +459,8 @@ function parseCompanyMonthlyPerf(raw: Grid, display: Grid): CompanyMonthlyPerf[]
     if (!date || !company) continue;
 
     const canxRaw = cell(raw, r, canxCol);
-    const canxPresent = canxRaw !== '' && canxRaw !== null && canxRaw !== undefined;
+    const canxPresent = present(canxRaw);
+    const ratingRaw = cell(raw, r, ratingCol);
 
     out.push({
       month: date.slice(0, 7),
@@ -467,7 +471,33 @@ function parseCompanyMonthlyPerf(raw: Grid, display: Grid): CompanyMonthlyPerf[]
       cancellationPct: canxPresent
         ? toPercent(cell(raw, r, canxPctCol), cell(display, r, canxPctCol))
         : null,
+      avgRating: present(ratingRaw) ? toNumber(ratingRaw) : null,
     });
+  }
+  return out;
+}
+
+/**
+ * The overall Cancellation & Release % per month, both companies combined,
+ * rebuilt from the per-company rows of the MTD table. Each row's % is
+ * count / bookings-assigned, so the denominator is recoverable as
+ * count / (pct/100); the combined rate is sum(counts) / sum(denominators) —
+ * a properly weighted total, not an average of the two companies' rates.
+ * Rows with no cancellations (or a 0%) carry no recoverable denominator and
+ * add nothing to the numerator, so they're skipped. A month with nothing
+ * usable gets no entry, leaving any hand-entered total row in place.
+ */
+function cancellationPctByMonth(rows: CompanyMonthlyPerf[]): Record<string, number> {
+  const acc: Record<string, { count: number; assigned: number }> = {};
+  for (const r of rows) {
+    if (!r.cancellationCount || !r.cancellationPct || r.cancellationPct <= 0) continue;
+    const a = (acc[r.month] ??= { count: 0, assigned: 0 });
+    a.count += r.cancellationCount;
+    a.assigned += r.cancellationCount / (r.cancellationPct / 100);
+  }
+  const out: Record<string, number> = {};
+  for (const [month, a] of Object.entries(acc)) {
+    if (a.assigned > 0) out[month] = (a.count / a.assigned) * 100;
   }
   return out;
 }
@@ -600,6 +630,11 @@ export async function readWorkbook(): Promise<WorkbookResult> {
       });
     }
   }
+
+  // The Company Performance MTD table is the maintained source for the
+  // monthly rate; a hand-entered total row in Cancellations only fills a
+  // month that table doesn't cover.
+  Object.assign(canxMonthlyPct, cancellationPctByMonth(companyMonthly));
 
   const canxTotalPct = canxMonthlyPct[todayIso().slice(0, 7)] ?? null;
 

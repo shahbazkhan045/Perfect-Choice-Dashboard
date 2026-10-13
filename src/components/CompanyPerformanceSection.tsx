@@ -387,7 +387,7 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
         </div>
 
         {kpis ? (
-          <div className="kpi-row kpi-row-4">
+          <div className="kpi-row">
             <Kpi label="Absent BD" value={numLabel(kpis.absentCount)} />
             <Kpi
               label="Absent BD %"
@@ -405,6 +405,12 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
               value={pctLabel(kpis.cancellationPct)}
               unit={kpis.cancellationPct == null ? 'not set in sheet' : undefined}
               tone={kpis.cancellationPct != null ? 'warn' : 'plain'}
+            />
+            <Kpi
+              label="Avg rating"
+              value={kpis.avgRating != null ? kpis.avgRating.toFixed(2) : '—'}
+              unit={kpis.avgRating == null ? 'not set in sheet' : '★'}
+              tone={kpis.avgRating != null ? 'good' : 'plain'}
             />
           </div>
         ) : (

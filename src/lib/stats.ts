@@ -362,6 +362,7 @@ export interface CompanyKpis {
   absentPct: number | null;
   cancellationCount: number | null;
   cancellationPct: number | null;
+  avgRating: number | null;
 }
 
 /** A straight lookup into the sheet's own MTD table — see the section header above. */
@@ -371,12 +372,21 @@ export function companyKpis(
   month: string,
 ): CompanyKpis {
   const row = monthly.find((m) => m.company === company && m.month === month);
-  if (!row) return { absentCount: null, absentPct: null, cancellationCount: null, cancellationPct: null };
+  if (!row) {
+    return {
+      absentCount: null,
+      absentPct: null,
+      cancellationCount: null,
+      cancellationPct: null,
+      avgRating: null,
+    };
+  }
   return {
     absentCount: row.absentCount,
     absentPct: row.absentPct,
     cancellationCount: row.cancellationCount,
     cancellationPct: row.cancellationPct,
+    avgRating: row.avgRating,
   };
 }
 

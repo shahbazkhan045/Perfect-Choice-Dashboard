@@ -104,6 +104,8 @@ export interface CompanyMonthlyPerf {
   absentPct: number;
   cancellationCount: number | null;
   cancellationPct: number | null;
+  /** Average customer rating for the month (column Q); null when blank. */
+  avgRating: number | null;
 }
 
 export interface DashboardData {
@@ -124,7 +126,11 @@ export interface DashboardData {
    * that row exists. This is canxMonthlyPct's entry for the current month.
    */
   canxTotalPct: number | null;
-  /** month key (yyyy-MM) -> hand-entered cancellation rate for that month. */
+  /**
+   * month key (yyyy-MM) -> overall Cancellation & Release % for that month,
+   * both companies combined — from the Company Performance MTD table, with
+   * a hand-entered Cancellations total row as fallback. See readWorkbook().
+   */
   canxMonthlyPct: Record<string, number>;
   /** Every roster entry from the "Company Performance" tab, if present. */
   companyPerf: CompanyPerfRow[];
