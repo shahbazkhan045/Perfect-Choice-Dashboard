@@ -8,6 +8,7 @@ import CashSection from '@/components/CashSection';
 import CanxSection from '@/components/CanxSection';
 import CompanyPerformanceSection from '@/components/CompanyPerformanceSection';
 import ReminderModal from '@/components/ReminderModal';
+import { BanIcon, BanknoteIcon, BuildingIcon, MoonIcon, SunIcon, UserIcon } from '@/components/icons';
 
 const NAME_KEY = 'pcd-actor-name';
 const THEME_KEY = 'pcd-theme';
@@ -294,7 +295,7 @@ export default function Dashboard({ role, roleLabel }: { role: Role; roleLabel: 
               title="Switch light / dark"
               aria-label="Switch light or dark theme"
             >
-              🌙
+              {theme === 'dark' ? <SunIcon size={17} /> : <MoonIcon size={17} />}
             </button>
           </div>
         </div>
@@ -307,7 +308,7 @@ export default function Dashboard({ role, roleLabel }: { role: Role; roleLabel: 
             className={`section-tab${section === 'CASH' ? ' is-active' : ''}`}
             onClick={() => setSection('CASH')}
           >
-            <span aria-hidden="true">💵</span> Cash collection
+            <BanknoteIcon size={17} /> Cash collection
             <span className="count-badge">{counts.CASH}</span>
           </button>
           <button
@@ -317,7 +318,7 @@ export default function Dashboard({ role, roleLabel }: { role: Role; roleLabel: 
             className={`section-tab${section === 'CANX' ? ' is-active' : ''}`}
             onClick={() => setSection('CANX')}
           >
-            <span aria-hidden="true">🚫</span> Cancellations &amp; releases
+            <BanIcon size={17} /> Cancellations &amp; releases
             <span className="count-badge">{counts.CANX}</span>
           </button>
           <button
@@ -327,7 +328,7 @@ export default function Dashboard({ role, roleLabel }: { role: Role; roleLabel: 
             className={`section-tab${section === 'COMPANY' ? ' is-active' : ''}`}
             onClick={() => setSection('COMPANY')}
           >
-            <span aria-hidden="true">🏢</span> Company performance
+            <BuildingIcon size={17} /> Company performance
           </button>
         </nav>
       </header>
@@ -344,8 +345,9 @@ export default function Dashboard({ role, roleLabel }: { role: Role; roleLabel: 
               }
             }}
           >
-            <span>
-              👋 Add your name so every update is attributed to you in the sheet.
+            <span className="name-bar-text">
+              <UserIcon size={16} /> Add your name so every update is attributed to you in the
+              sheet.
             </span>
             <input
               value={nameDraft}

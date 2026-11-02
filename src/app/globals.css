@@ -6,7 +6,7 @@
 :root {
   color-scheme: light;
 
-  --bg: #eef5f9;
+  --bg: #f5f7fb;
   --surface: #ffffff;
   --surface-2: #f8fafc;
   --surface-3: #f1f6fa;
@@ -15,21 +15,40 @@
 
   --text: #0f172a;
   --text-2: #475569;
-  --muted: #94a3b8;
+  /* Darkened from #94a3b8: over a translucent panel the old grey fell to
+     2.25:1, well under the 4.5:1 this text needs. */
+  --muted: #5d6b7e;
 
   --brand: #1d6fd0;
   --brand-ink: #1558a8;
   --brand-soft: #e7f0fb;
 
-  --good: #1d6fd0;
+  /* Status, deliberately NOT the brand colour: --brand is reserved for
+     things you can click, so "Confirmed collected" never reads as a link. */
+  --good: #15803d;
+  --good-soft: #e7f4ec;
   --bad: #c62828;
   --warn: #b45309;
   --ok-soft: #e7f4ec;
   --bad-soft: #fdeaea;
   --warn-soft: #fdf3e3;
 
+  /* Frosted panels. --glass-bg floats; --glass-bg-strong is for anything
+     dense enough that legibility beats translucency (tables, inputs). */
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-bg-strong: rgba(255, 255, 255, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.6);
+  --glass-blur: 16px;
+  --glass-shadow: 0 8px 32px rgba(15, 23, 42, 0.1);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+
+  /* The three blobs of the page background — see body::before. */
+  --mesh-1: rgba(29, 111, 208, 0.18);
+  --mesh-2: rgba(15, 155, 142, 0.13);
+  --mesh-3: rgba(124, 92, 222, 0.12);
+
   /* Chart series — status-coded, always paired with a legend and a table. */
-  --viz-collected: #2a78d6;
+  --viz-collected: #16a34a;
   --viz-notcollected: #d03b3b;
   --viz-awaiting: #cbd5e1;
   --viz-grid: #e8eef4;
@@ -46,7 +65,7 @@
   :root:not([data-theme='light']) {
     color-scheme: dark;
 
-    --bg: #0d1520;
+    --bg: #0b1220;
     --surface: #141f2d;
     --surface-2: #1a2635;
     --surface-3: #182534;
@@ -55,20 +74,32 @@
 
     --text: #e9eff7;
     --text-2: #a9bacd;
-    --muted: #6f8299;
+    --muted: #8296ad;
 
     --brand: #4f9bec;
     --brand-ink: #7ab6f4;
     --brand-soft: #16293f;
 
-    --good: #4f9bec;
+    --good: #4ade80;
+    --good-soft: #10281b;
     --bad: #ef7676;
     --warn: #e0a44a;
     --ok-soft: #152a3d;
     --bad-soft: #331c1c;
     --warn-soft: #322614;
 
-    --viz-collected: #3987e5;
+    --glass-bg: rgba(20, 31, 45, 0.55);
+    --glass-bg-strong: rgba(20, 31, 45, 0.8);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-blur: 16px;
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+    --mesh-1: rgba(29, 111, 208, 0.22);
+    --mesh-2: rgba(15, 155, 142, 0.15);
+    --mesh-3: rgba(124, 92, 222, 0.18);
+
+    --viz-collected: #4ade80;
     --viz-notcollected: #e66767;
     --viz-awaiting: #3d4f63;
     --viz-grid: #22334a;
@@ -82,7 +113,7 @@
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  --bg: #0d1520;
+  --bg: #0b1220;
   --surface: #141f2d;
   --surface-2: #1a2635;
   --surface-3: #182534;
@@ -91,20 +122,32 @@
 
   --text: #e9eff7;
   --text-2: #a9bacd;
-  --muted: #6f8299;
+  --muted: #8296ad;
 
   --brand: #4f9bec;
   --brand-ink: #7ab6f4;
   --brand-soft: #16293f;
 
-  --good: #4f9bec;
+  --good: #4ade80;
+  --good-soft: #10281b;
   --bad: #ef7676;
   --warn: #e0a44a;
   --ok-soft: #152a3d;
   --bad-soft: #331c1c;
   --warn-soft: #322614;
 
-  --viz-collected: #3987e5;
+  --glass-bg: rgba(20, 31, 45, 0.55);
+  --glass-bg-strong: rgba(20, 31, 45, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-blur: 16px;
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  --mesh-1: rgba(29, 111, 208, 0.22);
+  --mesh-2: rgba(15, 155, 142, 0.15);
+  --mesh-3: rgba(124, 92, 222, 0.18);
+
+  --viz-collected: #4ade80;
   --viz-notcollected: #e66767;
   --viz-awaiting: #3d4f63;
   --viz-grid: #22334a;
@@ -130,6 +173,24 @@ body {
   font: 400 14px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
     sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * The soft coloured mesh every panel floats over. Fixed so scrolling doesn't
+ * drag it, behind everything, and not clickable. Inset past the viewport on
+ * every side so the blur has room and never shows its own edges.
+ */
+body::before {
+  content: '';
+  position: fixed;
+  inset: -15vmax;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(42% 40% at 18% 14%, var(--mesh-1), transparent 72%),
+    radial-gradient(38% 36% at 82% 18%, var(--mesh-2), transparent 72%),
+    radial-gradient(45% 42% at 52% 92%, var(--mesh-3), transparent 72%);
+  filter: blur(50px);
 }
 
 button,
@@ -454,7 +515,9 @@ code {
 
 .kpi-row {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  /* One row, however many KPIs a tab has — Company Performance has six
+     since On Time % joined, the others five. */
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 14px;
 }
 
@@ -1019,6 +1082,7 @@ tr.is-saving {
 
 .num {
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .strong {
@@ -1895,4 +1959,211 @@ tbody tr {
   .role-chip {
     display: none;
   }
+}
+
+/* ==========================================================================
+   Glass
+   Translucent frosted panels over the mesh background. Presentation only —
+   nothing here changes a layout, a number or a behaviour.
+
+   backdrop-filter is expensive, so it is spent only on the dozen or so
+   genuine panels on screen (cards, KPI tiles, the top bar, modals, toasts)
+   and never on a control or a table row: those take --glass-bg-strong
+   instead, which keeps dense text legible and costs nothing. Both the
+   @supports and the prefers-reduced-transparency fallbacks below drop back
+   to the solid --surface, so no text ever depends on the blur.
+   ========================================================================== */
+
+.glass,
+.card,
+.kpi,
+.gate-card,
+.modal,
+.toast,
+.chart-tip {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow), var(--glass-highlight);
+}
+
+/* The top bar sits over scrolling content, so it blurs harder. */
+.topbar {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  backdrop-filter: blur(22px) saturate(160%);
+  border-bottom: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+/* Keep the inner highlight on hover, which would otherwise be replaced. */
+.kpi:hover,
+.chart-card:hover {
+  box-shadow: var(--shadow-md), var(--glass-highlight);
+}
+
+/* Dense or interactive surfaces: near-solid, no blur of their own. */
+.glass-strong,
+table,
+thead th,
+tbody tr:hover td,
+.history-row td,
+.btn,
+.filter.is-active,
+.table-search,
+.name-bar input,
+.icon-btn,
+.role-chip,
+.seg-toggle,
+.company-tab,
+.cp-month select,
+.cp-week-select,
+.cp-company-select,
+.cp-date-input,
+input,
+select,
+textarea {
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-border);
+}
+
+/* The toggles' selected pill has to stay readable against its own track. */
+.seg-toggle-btn.is-active,
+.company-tab.is-active,
+.btn-primary {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+
+/* Modals and the reminder preview dim and blur what is behind them. */
+.modal-scrim {
+  background: rgba(15, 23, 42, 0.45);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass,
+  .card,
+  .kpi,
+  .gate-card,
+  .modal,
+  .toast,
+  .chart-tip,
+  .topbar {
+    background: var(--surface);
+    border-color: var(--border);
+  }
+  .glass-strong,
+  table,
+  thead th,
+  .btn,
+  .table-search,
+  .icon-btn,
+  .seg-toggle,
+  .company-tab,
+  input,
+  select,
+  textarea {
+    background: var(--surface);
+    border-color: var(--border);
+  }
+  .modal-scrim {
+    background: rgba(15, 23, 42, 0.6);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  body::before {
+    display: none;
+  }
+  .glass,
+  .card,
+  .kpi,
+  .gate-card,
+  .modal,
+  .toast,
+  .chart-tip,
+  .topbar,
+  .modal-scrim {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .glass,
+  .card,
+  .kpi,
+  .gate-card,
+  .modal,
+  .toast,
+  .chart-tip,
+  .topbar {
+    background: var(--surface);
+    border-color: var(--border);
+  }
+  .glass-strong,
+  table,
+  thead th,
+  .btn,
+  .table-search,
+  .icon-btn,
+  .seg-toggle,
+  .company-tab,
+  input,
+  select,
+  textarea {
+    background: var(--surface);
+    border-color: var(--border);
+  }
+  .modal-scrim {
+    background: rgba(15, 23, 42, 0.6);
+  }
+}
+
+/* ==========================================================================
+   Icons
+   Inline SVG (see components/icons.tsx) in place of the emoji that used to
+   sit beside these labels. Every icon is decorative and keeps its text
+   label; these rules only stop them sitting on the text baseline.
+   ========================================================================== */
+
+.btn svg,
+.section-tab svg,
+.icon-btn svg,
+.toast svg,
+.reason-btn svg,
+.modal-warn svg,
+.name-bar-text svg {
+  flex: none;
+  vertical-align: -0.18em;
+}
+
+/* .section-tab and .toast are already inline-flex with their own gap. */
+.btn,
+.name-bar-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.icon-btn,
+.reason-btn {
+  display: inline-grid;
+  place-items: center;
+}
+
+.modal-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.modal-warn svg {
+  margin-top: 2px;
+}
+
+.gate-emoji {
+  display: grid;
+  place-items: center;
+  color: var(--brand);
 }

@@ -26,6 +26,7 @@ import {
 import { formatDmy } from '@/lib/parse';
 import { downloadCsv, toCsv } from '@/lib/csv';
 import { Kpi } from '@/components/ui';
+import { DownloadIcon } from '@/components/icons';
 
 function pctLabel(pct: number | null): string {
   return pct != null ? `${pct.toFixed(2)}%` : '—';
@@ -409,7 +410,7 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
           </div>
           <div className="toolbar-actions">
             <button type="button" className="btn" onClick={download} disabled={!rollup.length}>
-              ⬇ Download
+              <DownloadIcon /> Download
             </button>
           </div>
         </div>
@@ -626,7 +627,7 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
               onClick={downloadDefaulters}
               disabled={!defaulters.length}
             >
-              ⬇ Download
+              <DownloadIcon /> Download
             </button>
           </div>
         </div>

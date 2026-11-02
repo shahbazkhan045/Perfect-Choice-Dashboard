@@ -24,6 +24,7 @@ import {
 } from '@/components/ui';
 import DayBarChart, { type DayDatum } from '@/components/DayBarChart';
 import type { SectionProps } from '@/components/Dashboard';
+import { DownloadIcon, MailIcon } from '@/components/icons';
 
 const FILTER_TITLES: Record<FilterKey, string> = {
   yesterday: 'Yesterday',
@@ -288,11 +289,11 @@ export default function CashSection({
             onClick={download}
             disabled={isFinanceTab ? !financeRows.length : isMonthList ? !visibleMonths.length : !rows.length}
           >
-            ⬇ Download
+            <DownloadIcon /> Download
           </button>
           {canRemind ? (
             <button type="button" className="btn btn-primary" onClick={onRemind}>
-              ✉ Send reminder
+              <MailIcon /> Send reminder
             </button>
           ) : null}
         </div>

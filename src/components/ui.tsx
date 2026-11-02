@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FilterKey } from '@/lib/stats';
 import { formatDmy } from '@/lib/parse';
+import { AlertIcon, CheckIcon, CloseIcon, RefreshIcon } from '@/components/icons';
 
 // ---------------------------------------------------------------------------
 // KPI card
@@ -130,7 +131,7 @@ export function RefreshButton({ onRefresh }: { onRefresh: () => void }) {
       }}
     >
       <span className={`refresh-icon${spinning ? ' is-spinning' : ''}`} aria-hidden="true">
-        ⟳
+        <RefreshIcon size={16} />
       </span>
       Refresh
     </button>
@@ -243,7 +244,7 @@ export function Toaster({ toasts }: { toasts: ToastMessage[] }) {
     <div className="toasts" aria-live="polite" aria-atomic="false">
       {toasts.map((t) => (
         <div key={t.id} className={`toast toast-${t.kind}`}>
-          <span aria-hidden="true">{t.kind === 'ok' ? '✓' : '⚠'}</span>
+          {t.kind === 'ok' ? <CheckIcon size={16} /> : <AlertIcon size={16} />}
           {t.text}
         </div>
       ))}
@@ -288,7 +289,7 @@ export function Modal({
         <div className="modal-head">
           <h2>{title}</h2>
           <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
-            ✕
+            <CloseIcon size={16} />
           </button>
         </div>
         <div className="modal-body">{children}</div>
@@ -368,7 +369,7 @@ export function ReasonField({
             title="Save (Ctrl+Enter)"
             aria-label="Save reason"
           >
-            ✓
+            <CheckIcon size={16} />
           </button>
           <button
             type="button"
@@ -378,7 +379,7 @@ export function ReasonField({
             title="Discard changes (Esc)"
             aria-label="Discard changes"
           >
-            ✕
+            <CloseIcon size={16} />
           </button>
         </div>
       ) : null}

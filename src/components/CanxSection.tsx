@@ -25,6 +25,7 @@ import {
 } from '@/components/ui';
 import DayBarChart, { type DayDatum } from '@/components/DayBarChart';
 import type { SectionProps } from '@/components/Dashboard';
+import { DownloadIcon, PaperclipIcon } from '@/components/icons';
 
 /** PDFs open in a new tab; everything else previews inline in a modal. */
 function isLikelyImage(url: string): boolean {
@@ -215,7 +216,7 @@ export default function CanxSection({
             onClick={download}
             disabled={isMonthList ? !visibleMonths.length : !rows.length}
           >
-            ⬇ Download
+            <DownloadIcon /> Download
           </button>
         </div>
       </div>
@@ -445,7 +446,7 @@ function Row({
                 disabled={saving}
                 onClick={() => fileRef.current?.click()}
               >
-                📎 {row.screenshot ? 'Replace' : 'Add screenshot'}
+                <PaperclipIcon /> {row.screenshot ? 'Replace' : 'Add screenshot'}
               </button>
               <input
                 ref={fileRef}

@@ -1,6 +1,7 @@
 import { currentRole, tokensConfigured } from '@/lib/auth';
 import Dashboard from '@/components/Dashboard';
 import { ROLE_LABELS } from '@/lib/types';
+import { LockIcon } from '@/components/icons';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,7 @@ function AccessGate({ configured }: { configured: boolean }) {
     <main className="gate">
       <div className="gate-card">
         <div className="gate-emoji" aria-hidden="true">
-          🔒
+          <LockIcon size={34} />
         </div>
         <h1>Access link required</h1>
 
