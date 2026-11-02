@@ -232,3 +232,15 @@ export function shortCleanerName(full: string): { name: string; van: string } {
 
   return { name: name || value, van };
 }
+
+/**
+ * "02/11/2026 14:22" -> "02/11 14:22". The year is almost always the current
+ * one, so in a narrow "Last update" column it costs width without telling
+ * anyone anything; the full stamp stays in the cell's tooltip. Anything that
+ * isn't in the expected shape is returned untouched.
+ */
+export function compactStamp(stamp: string): string {
+  const s = String(stamp ?? '').trim();
+  const m = s.match(/^(\d{2}\/\d{2})\/\d{4}(\s+\d{2}:\d{2})?$/);
+  return m ? `${m[1]}${m[2] ?? ''}` : s;
+}

@@ -23,6 +23,12 @@ interface Props {
   /** Formats a stack total / tooltip figure. */
   format: (n: number) => string;
   emptyLabel: string;
+  /**
+   * A target to draw as a dashed horizontal line, e.g. the 90% on-time
+   * target. The value axis is extended to keep it on screen even when every
+   * bar is below it, so "we are nowhere near" is visible rather than implied.
+   */
+  reference?: { value: number; label: string } | null;
 }
 
 const W = 760;
@@ -47,18 +53,19 @@ export default function DayBarChart({
   data,
   format,
   emptyLabel,
+  reference,
 }: Props) {
   const [hover, setHover] = useState<{ index: number; x: number } | null>(null);
 
   const { max, ticks } = useMemo(() => {
     const totals = data.map((d) => series.reduce((s, se) => s + (d.values[se.id] || 0), 0));
-    const peak = Math.max(1, ...totals);
+    const peak = Math.max(1, ...totals, reference ? reference.value : 0);
     const step = niceStep(peak / 4);
     const top = Math.ceil(peak / step) * step;
     const t: number[] = [];
     for (let v = 0; v <= top + 1e-9; v += step) t.push(v);
     return { max: top, ticks: t };
-  }, [data, series]);
+  }, [data, series, reference]);
 
   if (!data.length) {
     return (
@@ -162,6 +169,25 @@ export default function DayBarChart({
               </g>
             );
           })}
+
+          {reference ? (
+            <g>
+              <line
+                x1={PAD.left}
+                x2={W - PAD.right}
+                y1={PAD.top + PLOT_H - (reference.value / max) * PLOT_H}
+                y2={PAD.top + PLOT_H - (reference.value / max) * PLOT_H}
+                className="chart-reference"
+              />
+              <text
+                x={W - PAD.right}
+                y={PAD.top + PLOT_H - (reference.value / max) * PLOT_H - 6}
+                className="chart-tick chart-reference-label"
+              >
+                {reference.label}
+              </text>
+            </g>
+          ) : null}
 
           {hover ? (
             <line

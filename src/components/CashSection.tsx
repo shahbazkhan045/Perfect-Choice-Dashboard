@@ -5,13 +5,16 @@ import type { CashRow } from '@/lib/types';
 import {
   applyFilter,
   ageInDays,
+  cashAgeing,
   cashKpis,
   cashMonthSummaries,
   financeCommentsRows,
+  inAgeBucket,
+  type AgeBucketId,
   type CashMonthSummary,
   type FilterKey,
 } from '@/lib/stats';
-import { formatDmy } from '@/lib/parse';
+import { compactStamp, formatDmy } from '@/lib/parse';
 import { downloadCsv, toCsv } from '@/lib/csv';
 import {
   AgeBadge,
@@ -35,6 +38,8 @@ const FILTER_TITLES: Record<FilterKey, string> = {
 };
 
 const FINANCE_TAB = { key: 'financeComments' as const, label: 'Finance comments' };
+
+const BUCKET_CLASS = (active: boolean) => (active ? 'ageing-bucket is-active' : 'ageing-bucket');
 
 const FINANCE_RESPONSE_PLACEHOLDER =
   'If collected, write yes; if not, then write the reason for not being collected';
@@ -72,6 +77,14 @@ export default function CashSection({
     if (!isMtdTab) setExpandedMonth(null);
   }, [isMtdTab]);
 
+  // Which ageing bucket the Pending list is narrowed to, if any. Cleared
+  // whenever you leave Pending, so the tab never opens pre-filtered by a
+  // choice you made several clicks ago.
+  const [ageBucket, setAgeBucket] = useState<AgeBucketId | null>(null);
+  useEffect(() => {
+    if (filter !== 'pending') setAgeBucket(null);
+  }, [filter]);
+
   const result = useMemo(
     () => applyFilter(data.cash, filter, data.today, data.yesterday),
     [data.cash, data.today, data.yesterday, filter],
@@ -102,19 +115,28 @@ export default function CashSection({
     [data.cash, data.today, data.yesterday, financeAll, monthSummaries],
   );
 
+  // How long the still-unconfirmed cash has been waiting. Current month
+  // only, exactly like the reminder email — see cashAgeing() in lib/stats.
+  const ageing = useMemo(() => cashAgeing(data.cash, data.today), [data.cash, data.today]);
+  const ageingTotal = ageing.reduce((sum, b) => sum + b.count, 0);
+
   const term = search.trim().toLowerCase();
 
   const rows = useMemo(() => {
     const base = isMtdTab ? monthRows : result.rows;
+    const scoped =
+      filter === 'pending' && ageBucket
+        ? base.filter((r) => inAgeBucket(r, ageBucket, data.today))
+        : base;
     return term
-      ? base.filter(
+      ? scoped.filter(
           (r) =>
             r.ref.toLowerCase().includes(term) ||
             r.reason.toLowerCase().includes(term) ||
             formatDmy(r.date).includes(term),
         )
-      : base;
-  }, [isMtdTab, monthRows, result.rows, term]);
+      : scoped;
+  }, [isMtdTab, monthRows, result.rows, term, filter, ageBucket, data.today]);
 
   const financeRows = useMemo(
     () =>
@@ -158,6 +180,10 @@ export default function CashSection({
 
   const pct = (n: number) => (kpis.totalCount ? (n / kpis.totalCount) * 100 : 0);
   const isMonthList = isMtdTab && !expandedMonth;
+
+  // An entire column of "—" tells you nothing and costs a column's width,
+  // so it only appears once something in view has actually been updated.
+  const showLastUpdate = rows.some((r) => r.updatedAt || r.updatedBy);
 
   function download() {
     if (isFinanceTab) {
@@ -228,6 +254,47 @@ export default function CashSection({
               tone={kpis.noTicketCount ? 'bad' : 'plain'}
             />
           </div>
+
+          {ageingTotal ? (
+            <div className="card ageing-card">
+              <div className="ageing-head">
+                <span>How long the pending cash has been waiting</span>
+                <span className="muted">This month · {ageingTotal} entries</span>
+              </div>
+              <div className="ageing-buckets">
+                {ageing.map((bucket) => {
+                  const active = filter === 'pending' && ageBucket === bucket.id;
+                  return (
+                    <button
+                      key={bucket.id}
+                      type="button"
+                      className={BUCKET_CLASS(active)}
+                      aria-pressed={active}
+                      disabled={!bucket.count && !active}
+                      onClick={() => {
+                        // Clicking a bucket is a shortcut to "show me these":
+                        // it moves you to the Pending list and narrows it.
+                        setFilter('pending');
+                        setAgeBucket(active ? null : bucket.id);
+                      }}
+                    >
+                      <span className="ageing-label">{bucket.label}</span>
+                      <span className="ageing-count">{bucket.count}</span>
+                      <span className="ageing-amount">{money(bucket.amount)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {filter === 'pending' && ageBucket ? (
+                <p className="muted ageing-hint">
+                  Showing only entries {ageing.find((b) => b.id === ageBucket)?.label} old.{' '}
+                  <button type="button" className="linkish" onClick={() => setAgeBucket(null)}>
+                    Show all pending
+                  </button>
+                </p>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="card progress-card">
             <div className="progress-head">
@@ -414,7 +481,7 @@ export default function CashSection({
                     <th>Status</th>
                     <th>Ticket raised?</th>
                     <th className="col-reason">Reason</th>
-                    <th>Last update</th>
+                    {showLastUpdate ? <th>Last update</th> : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -428,11 +495,12 @@ export default function CashSection({
                         saving={savingKeys.has(row.key)}
                         money={money}
                         onPatch={onPatch}
+                        showLastUpdate={showLastUpdate}
                       />
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={7} className="table-msg">
+                      <td colSpan={showLastUpdate ? 7 : 6} className="table-msg">
                         {term ? 'No entries match your search.' : 'No cash entries for this view.'}
                       </td>
                     </tr>
@@ -488,6 +556,7 @@ function Row({
   saving,
   money,
   onPatch,
+  showLastUpdate,
 }: {
   row: CashRow;
   today: string;
@@ -495,6 +564,7 @@ function Row({
   saving: boolean;
   money: (n: number) => string;
   onPatch: SectionProps['onPatch'];
+  showLastUpdate: boolean;
 }) {
   // Ticket and reason only apply to cash that did not come back.
   const explains = row.status === 'Not collected';
@@ -502,14 +572,21 @@ function Row({
 
   return (
     <tr className={saving ? 'is-saving' : undefined}>
-      <td title={row.dateRaw ? `As written in the sheet: ${row.dateRaw}` : undefined}>
+      <td
+        data-label="Date"
+        title={row.dateRaw ? `As written in the sheet: ${row.dateRaw}` : undefined}
+      >
         {formatDmy(row.date)}
         <AgeBadge days={age} />
       </td>
-      <td className="mono">{row.ref}</td>
-      <td className="num strong">{money(row.amount)}</td>
+      <td className="mono" data-label="Reference">
+        {row.ref}
+      </td>
+      <td className="num strong" data-label="Amount">
+        {money(row.amount)}
+      </td>
 
-      <td>
+      <td data-label="Status">
         <select
           className="cell-select"
           value={row.status}
@@ -523,7 +600,7 @@ function Row({
         </select>
       </td>
 
-      <td>
+      <td data-label="Ticket raised?">
         <select
           className="cell-select"
           value={row.ticket}
@@ -539,7 +616,7 @@ function Row({
         {explains && row.ticket === 'No' ? <span className="flag">No ticket</span> : null}
       </td>
 
-      <td className="col-reason">
+      <td className="col-reason" data-label="Reason">
         <ReasonField
           value={row.reason}
           placeholder={explains ? 'Why was it not collected?' : 'Only needed if not collected'}
@@ -548,16 +625,18 @@ function Row({
         />
       </td>
 
-      <td className="meta">
-        {row.updatedAt ? (
-          <>
-            <span>{row.updatedAt}</span>
-            <span className="meta-by">{row.updatedBy}</span>
-          </>
-        ) : (
-          <span className="muted">—</span>
-        )}
-      </td>
+      {showLastUpdate ? (
+        <td className="meta" data-label="Last update" title={row.updatedAt || undefined}>
+          {row.updatedAt || row.updatedBy ? (
+            <span>
+              {row.updatedBy || 'Updated'}
+              {row.updatedAt ? ' · ' + compactStamp(row.updatedAt) : ''}
+            </span>
+          ) : (
+            <span className="muted">—</span>
+          )}
+        </td>
+      ) : null}
     </tr>
   );
 }

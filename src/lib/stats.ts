@@ -1169,3 +1169,121 @@ export function shortMonthLabel(monthKey: string): string {
   const m = Number(monthKey.split('-')[1]);
   return SHORT_MONTHS[m - 1] ?? monthKey;
 }
+
+// ---------------------------------------------------------------------------
+// Cash ageing
+//
+// How long the still-unconfirmed cash has been waiting. Scoped to the current
+// month exactly like reminderStats, so this strip and the reminder email can
+// never tell the partner two different stories about the same pile of cash.
+// ---------------------------------------------------------------------------
+
+export type AgeBucketId = 'fresh' | 'week' | 'stale';
+
+export interface AgeingBucket {
+  id: AgeBucketId;
+  label: string;
+  /** Inclusive age range in days; `maxDays` null means open-ended. */
+  minDays: number;
+  maxDays: number | null;
+  count: number;
+  amount: number;
+}
+
+const AGE_BUCKETS: { id: AgeBucketId; label: string; minDays: number; maxDays: number | null }[] = [
+  { id: 'fresh', label: '1–3 days', minDays: 0, maxDays: 3 },
+  { id: 'week', label: '4–7 days', minDays: 4, maxDays: 7 },
+  { id: 'stale', label: '8+ days', minDays: 8, maxDays: null },
+];
+
+/** True when this row is the kind of pending cash the ageing strip counts. */
+export function isPendingThisMonth(row: CashRow, today: string): boolean {
+  return !row.status && Boolean(row.date) && monthOf(row.date) === monthOf(today);
+}
+
+export function cashAgeing(cash: CashRow[], today: string): AgeingBucket[] {
+  const out: AgeingBucket[] = AGE_BUCKETS.map((b) => ({ ...b, count: 0, amount: 0 }));
+  for (const row of cash) {
+    if (!isPendingThisMonth(row, today)) continue;
+    const age = ageInDays(row, today);
+    const bucket = out.find((b) => age >= b.minDays && (b.maxDays == null || age <= b.maxDays));
+    if (!bucket) continue;
+    bucket.count += 1;
+    bucket.amount += row.amount;
+  }
+  return out;
+}
+
+/** Does this row fall in the named bucket? Used to filter the Pending list. */
+export function inAgeBucket(row: CashRow, bucketId: AgeBucketId, today: string): boolean {
+  const bucket = AGE_BUCKETS.find((b) => b.id === bucketId);
+  if (!bucket) return true;
+  const age = ageInDays(row, today);
+  return age >= bucket.minDays && (bucket.maxDays == null || age <= bucket.maxDays);
+}
+
+// ---------------------------------------------------------------------------
+// Company performance, day by day
+// ---------------------------------------------------------------------------
+
+export interface CompanyDayPoint {
+  /** yyyy-MM-dd */
+  date: string;
+  absentCount: number;
+  cancellationCount: number;
+  /** null on a day with no exclusive bookings — not 0%. */
+  onTimePct: number | null;
+}
+
+/**
+ * One point per day of `month` for a single company, for the Overview trend
+ * chart. Every day in the month gets a point so the x-axis is a real
+ * calendar rather than only the days something went wrong; days after today
+ * are left out, since an empty future day would read as a perfect one.
+ */
+export function companyDailySeries(
+  perf: CompanyPerfRow[],
+  canx: CanxRow[],
+  onTime: OnTimeData,
+  company: string,
+  month: string,
+  today: string,
+): CompanyDayPoint[] {
+  if (!month || !company) return [];
+  const { from, to } = monthRange(month);
+  const last = to < today ? to : today;
+  if (last < from) return [];
+
+  const points = new Map<string, CompanyDayPoint>();
+  for (let d = from; d <= last; d = shiftIso(d, 1)) {
+    points.set(d, { date: d, absentCount: 0, cancellationCount: 0, onTimePct: null });
+  }
+
+  for (const r of perf) {
+    if (r.company !== company) continue;
+    const point = points.get(r.date);
+    if (point) point.absentCount += r.count;
+  }
+
+  for (const r of canx) {
+    if (r.company !== company) continue;
+    const point = points.get(r.date);
+    if (point) point.cancellationCount += r.count || 1;
+  }
+
+  // On time comes from the van block, which is complete for every day it
+  // covers, so a day's rate is the sum of its vans — not an average of them.
+  const onTimeTotals = new Map<string, { onTime: number; exclusive: number }>();
+  for (const r of onTime.vanDaily) {
+    if (r.company !== company || !points.has(r.date)) continue;
+    const acc = onTimeTotals.get(r.date) ?? { onTime: 0, exclusive: 0 };
+    acc.onTime += r.onTime;
+    acc.exclusive += r.exclusiveBookings;
+    onTimeTotals.set(r.date, acc);
+  }
+  for (const [date, acc] of onTimeTotals) {
+    if (acc.exclusive > 0) points.get(date)!.onTimePct = (acc.onTime / acc.exclusive) * 100;
+  }
+
+  return [...points.values()];
+}

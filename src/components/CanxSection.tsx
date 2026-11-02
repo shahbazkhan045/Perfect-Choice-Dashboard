@@ -11,7 +11,7 @@ import {
   type CanxMonthSummary,
   type FilterKey,
 } from '@/lib/stats';
-import { formatDmy } from '@/lib/parse';
+import { compactStamp, formatDmy, shortCleanerName, shortVanName } from '@/lib/parse';
 import { downloadCsv, toCsv } from '@/lib/csv';
 import {
   AgeBadge,
@@ -118,6 +118,10 @@ export default function CanxSection({
     () => (term ? monthSummaries.filter((m) => m.label.toLowerCase().includes(term)) : monthSummaries),
     [monthSummaries, term],
   );
+
+  // An entire column of "—" tells you nothing and costs a column's width,
+  // so it only appears once something in view has actually been updated.
+  const showLastUpdate = rows.some((r) => r.updatedAt || r.updatedBy);
 
   const kpis = useMemo(() => canxKpis(rows), [rows]);
   const expandedSummary = isMtdTab && expandedMonth
@@ -291,7 +295,7 @@ export default function CanxSection({
                     <th className="num">Count</th>
                     <th className="num">%</th>
                     <th className="col-reason">Reason &amp; screenshot</th>
-                    <th>Last update</th>
+                    {showLastUpdate ? <th>Last update</th> : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -306,11 +310,12 @@ export default function CanxSection({
                         onPatch={onPatch}
                         onUpload={onUpload}
                         onView={setViewingUrl}
+                        showLastUpdate={showLastUpdate}
                       />
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={8} className="table-msg">
+                      <td colSpan={showLastUpdate ? 8 : 7} className="table-msg">
                         {term ? 'No rows match your search.' : 'No cancellations for this view.'}
                       </td>
                     </tr>
@@ -377,6 +382,7 @@ function Row({
   onPatch,
   onUpload,
   onView,
+  showLastUpdate,
 }: {
   row: CanxRow;
   today: string;
@@ -385,6 +391,7 @@ function Row({
   onPatch: SectionProps['onPatch'];
   onUpload: SectionProps['onUpload'];
   onView: (url: string) => void;
+  showLastUpdate: boolean;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const answered = isCanxAnswered(row);
@@ -392,19 +399,32 @@ function Row({
 
   return (
     <tr className={saving ? 'is-saving' : undefined}>
-      <td title={row.dateRaw ? `As written in the sheet: ${row.dateRaw}` : undefined}>
+      <td
+        data-label="Date"
+        title={row.dateRaw ? `As written in the sheet: ${row.dateRaw}` : undefined}
+      >
         {formatDmy(row.date)}
         <AgeBadge days={age} />
       </td>
-      <td className="mono">{row.code}</td>
-      <td>{row.cleaner || <span className="muted">—</span>}</td>
-      <td className="van" title={row.van}>
-        {row.van || <span className="muted">—</span>}
+      <td className="mono" data-label="Appointment">
+        {row.code}
       </td>
-      <td className="num">{row.count}</td>
-      <td className="num">{row.pct ? `${row.pct.toFixed(2)}%` : '—'}</td>
+      {/* Shortened for the column's width; the full name is in the tooltip
+          and in the CSV download. See shortCleanerName / shortVanName. */}
+      <td data-label="Cleaner" title={row.cleaner || undefined}>
+        {row.cleaner ? shortCleanerName(row.cleaner).name : <span className="muted">—</span>}
+      </td>
+      <td className="van" data-label="Van" title={row.van || undefined}>
+        {row.van ? shortVanName(row.van) : <span className="muted">—</span>}
+      </td>
+      <td className="num" data-label="Count">
+        {row.count}
+      </td>
+      <td className="num" data-label="%">
+        {row.pct ? `${row.pct.toFixed(2)}%` : '—'}
+      </td>
 
-      <td className="col-reason">
+      <td className="col-reason" data-label="Reason &amp; screenshot">
         <ReasonField
           value={row.reason}
           placeholder="Explain the cancellation or release…"
@@ -464,16 +484,18 @@ function Row({
         </div>
       </td>
 
-      <td className="meta">
-        {row.updatedAt ? (
-          <>
-            <span>{row.updatedAt}</span>
-            <span className="meta-by">{row.updatedBy}</span>
-          </>
-        ) : (
-          <span className="muted">—</span>
-        )}
-      </td>
+      {showLastUpdate ? (
+        <td className="meta" data-label="Last update" title={row.updatedAt || undefined}>
+          {row.updatedAt || row.updatedBy ? (
+            <span>
+              {row.updatedBy || 'Updated'}
+              {row.updatedAt ? ' · ' + compactStamp(row.updatedAt) : ''}
+            </span>
+          ) : (
+            <span className="muted">—</span>
+          )}
+        </td>
+      ) : null}
     </tr>
   );
 }

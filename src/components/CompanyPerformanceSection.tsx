@@ -8,6 +8,7 @@ import {
   companyCleanerRollup,
   companyKpis,
   companyMonthOptions,
+  companyDailySeries,
   companyOnTime,
   repeatOffenders,
   shiftMonth,
@@ -38,6 +39,7 @@ import {
 } from '@/lib/targets';
 import { downloadCsv, toCsv } from '@/lib/csv';
 import { Kpi, type KpiDelta } from '@/components/ui';
+import DayBarChart, { type DayDatum } from '@/components/DayBarChart';
 import { DownloadIcon } from '@/components/icons';
 
 function pctLabel(pct: number | null): string {
@@ -91,6 +93,49 @@ function OnTimeCell({ pct }: { pct: number | null }) {
 
 /** Which company this browser last looked at — a convenience, never required. */
 const COMPANY_KEY = 'pcd-company';
+
+/**
+ * One tile of the month summary strip: the figure, how it scores against
+ * its target, and how it moved since last month. Deliberately smaller and
+ * flatter than a Kpi — this strip is a recap of numbers already shown
+ * above, not a second set of headline figures competing with them.
+ */
+function SummaryTile({
+  label,
+  value,
+  tone,
+  target,
+  delta,
+}: {
+  label: string;
+  value: string;
+  tone: 'plain' | 'good' | 'warn' | 'bad';
+  target?: string;
+  delta?: KpiDelta | null;
+}) {
+  return (
+    <div className="summary-tile">
+      <span className="summary-label">{label}</span>
+      <span className={`summary-value tone-${tone}`}>{value}</span>
+      {delta ? (
+        <span
+          className={`summary-delta summary-delta-${
+            Math.abs(delta.change) < Math.pow(10, -(delta.decimals ?? 0)) / 2
+              ? 'flat'
+              : (delta.lowerIsBetter ? delta.change < 0 : delta.change > 0)
+                ? 'good'
+                : 'bad'
+          }`}
+        >
+          <span aria-hidden="true">{delta.change > 0 ? '▲' : delta.change < 0 ? '▼' : '→'}</span>{' '}
+          {Math.abs(delta.change).toFixed(delta.decimals ?? 0)}
+          {delta.suffix ? ` ${delta.suffix}` : ''} vs {delta.vs}
+        </span>
+      ) : null}
+      {target ? <span className="summary-target">{target}</span> : null}
+    </div>
+  );
+}
 
 type DefaulterView = 'monthly' | 'weekly';
 type CpView = 'overview' | 'rawdata';
@@ -261,6 +306,47 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
   useEffect(() => {
     setExpandedKey(null);
   }, [defaulterView, defaulterGroupBy]);
+
+  // One point per elapsed day of the selected month, for the trend charts
+  // under the summary strip. Counts and a percentage are deliberately NOT
+  // put on one axis — see the note at the top of DayBarChart.
+  const dailySeries = useMemo(
+    () =>
+      selectedCompany
+        ? companyDailySeries(
+            data.companyPerf,
+            data.canx,
+            onTime,
+            selectedCompany,
+            month,
+            data.today,
+          )
+        : [],
+    [data.companyPerf, data.canx, onTime, selectedCompany, month, data.today],
+  );
+
+  const eventsChart: DayDatum[] = useMemo(
+    () =>
+      dailySeries
+        .filter((d) => d.absentCount > 0 || d.cancellationCount > 0)
+        .map((d) => ({
+          date: d.date,
+          values: { absent: d.absentCount, cancellations: d.cancellationCount },
+        })),
+    [dailySeries],
+  );
+
+  const onTimeChart: DayDatum[] = useMemo(
+    () =>
+      dailySeries
+        .filter((d) => d.onTimePct != null)
+        .map((d) => ({ date: d.date, values: { onTime: d.onTimePct as number } })),
+    [dailySeries],
+  );
+
+  const chartSubtitle = `${formatMonthLabel(month)} \u00b7 ${selectedCompany ?? ''}`;
+  const pctAxis = (v: number) => Math.round(v) + '%';
+  const countAxis = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
 
   // Who was over threshold last month too. Weekly has no "previous month"
   // to compare against, so the tag only appears on the Monthly tab.
@@ -665,6 +751,83 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
           <p className="muted cp-empty-hint">Select a company above to see its numbers.</p>
         )}
       </div>
+
+      {selectedCompany ? (
+        <>
+          <div className="card cp-summary">
+            <div className="cp-card-head">
+              <span>{formatMonthLabel(month)} at a glance</span>
+              <span className="muted">{selectedCompany}</span>
+            </div>
+            <div className="summary-strip">
+              <SummaryTile
+                label="C&amp;R %"
+                value={pctLabel(kpis?.cancellationPct ?? null)}
+                tone={toneFor(kpis?.cancellationPct ?? null, CANX_PCT_TARGET, false)}
+                target={targetLabel(CANX_PCT_TARGET)}
+                delta={delta(kpis?.cancellationPct, previousKpis?.cancellationPct, true, 'pts', 2)}
+              />
+              <SummaryTile
+                label="Absent BD %"
+                value={pctLabel(kpis?.absentPct ?? null)}
+                tone={toneFor(kpis?.absentPct ?? null, ABSENT_BD_PCT_TARGET, false)}
+                target={targetLabel(ABSENT_BD_PCT_TARGET)}
+                delta={delta(kpis?.absentPct, previousKpis?.absentPct, true, 'pts', 2)}
+              />
+              <SummaryTile
+                label="On Time %"
+                value={companyOnTimeKpi ? pctLabel(companyOnTimeKpi.pct) : 'Not tracked'}
+                tone={
+                  companyOnTimeKpi
+                    ? toneFor(companyOnTimeKpi.pct, ON_TIME_PCT_TARGET, true)
+                    : 'plain'
+                }
+                target={companyOnTimeKpi ? targetLabel(ON_TIME_PCT_TARGET) : undefined}
+                delta={delta(
+                  companyOnTimeKpi?.pct ?? null,
+                  previousOnTime?.pct ?? null,
+                  false,
+                  'pts',
+                  2,
+                )}
+              />
+              <SummaryTile
+                label="Avg rating"
+                value={kpis?.avgRating != null ? kpis.avgRating.toFixed(2) : '—'}
+                tone={toneFor(kpis?.avgRating ?? null, RATING_TARGET, true)}
+                target={kpis?.avgRating != null ? targetLabel(RATING_TARGET, '') : undefined}
+                delta={delta(kpis?.avgRating, previousKpis?.avgRating, false, undefined, 2)}
+              />
+            </div>
+          </div>
+
+          {eventsChart.length ? (
+            <DayBarChart
+              title="Absences and cancellations per day"
+              subtitle={chartSubtitle}
+              series={[
+                { id: 'absent', label: 'Absent BD', colorVar: '--viz-notcollected' },
+                { id: 'cancellations', label: 'Cancellations', colorVar: '--viz-awaiting' },
+              ]}
+              data={eventsChart}
+              format={countAxis}
+              emptyLabel="Nothing recorded this month."
+            />
+          ) : null}
+
+          {onTimeChart.length ? (
+            <DayBarChart
+              title="On time % per day"
+              subtitle={chartSubtitle}
+              series={[{ id: 'onTime', label: 'On time', colorVar: '--viz-collected' }]}
+              data={onTimeChart}
+              format={pctAxis}
+              emptyLabel="No exclusive bookings this month."
+              reference={{ value: ON_TIME_PCT_TARGET, label: targetLabel(ON_TIME_PCT_TARGET) }}
+            />
+          ) : null}
+        </>
+      ) : null}
 
       <div className="card cp-defaulters">
         <div className="cp-card-head">
