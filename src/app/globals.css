@@ -6,7 +6,7 @@
 :root {
   color-scheme: light;
 
-  --bg: #f5f7fb;
+  --bg: #f1f7fc;
   --surface: #ffffff;
   --surface-2: #f8fafc;
   --surface-3: #f1f6fa;
@@ -17,11 +17,18 @@
   --text-2: #475569;
   /* Darkened from #94a3b8: over a translucent panel the old grey fell to
      2.25:1, well under the 4.5:1 this text needs. */
-  --muted: #5d6b7e;
+  --muted: #51606f;
 
-  --brand: #1d6fd0;
-  --brand-ink: #1558a8;
-  --brand-soft: #e7f0fb;
+  /* Sampled from the logo artwork itself: rgb(0, 195, 255). */
+  --brand: #00c3ff;
+  /* Brand-coloured TEXT on the page background — the cyan itself is far too
+     light to read at 4.5:1, so links and counts use this instead. */
+  --brand-ink: #0a6f99;
+  --brand-soft: #e2f6ff;
+  /* What goes ON a --brand fill. The cyan is a light colour, so white text
+     on it measures 2.05:1; near-black measures 9.11:1. Both themes use the
+     dark one, because the fill is the same cyan in both. */
+  --brand-on: #04141f;
 
   /* Status, deliberately NOT the brand colour: --brand is reserved for
      things you can click, so "Confirmed collected" never reads as a link. */
@@ -35,19 +42,19 @@
 
   /* Frosted panels. --glass-bg floats; --glass-bg-strong is for anything
      dense enough that legibility beats translucency (tables, inputs). */
-  --glass-bg: rgba(255, 255, 255, 0.5);
-  --glass-bg-strong: rgba(255, 255, 255, 0.78);
+  --glass-bg: rgba(255, 255, 255, 0.6);
+  --glass-bg-strong: rgba(255, 255, 255, 0.88);
   /* Light mode can't use a white hairline on white, so the border carries
      the separation as a faint ink line instead. */
-  --glass-border: rgba(15, 23, 42, 0.1);
+  --glass-border: rgba(10, 60, 90, 0.13);
   --glass-blur: 22px;
   --glass-shadow: 0 8px 32px rgba(15, 23, 42, 0.1);
   --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.5);
 
   /* The three blobs of the page background — see body::before. */
-  --mesh-1: rgba(29, 111, 208, 0.18);
-  --mesh-2: rgba(15, 155, 142, 0.13);
-  --mesh-3: rgba(124, 92, 222, 0.12);
+  --mesh-1: rgba(0, 195, 255, 0.2);
+  --mesh-2: rgba(0, 130, 210, 0.16);
+  --mesh-3: rgba(60, 110, 220, 0.12);
 
   /* Chart series — status-coded, always paired with a legend and a table. */
   --viz-collected: #16a34a;
@@ -69,20 +76,21 @@
 
     /* Near-black, so the warm bloom behind the panels is the only colour
        in the room and the glass has something to pick up. */
-    --bg: #0a0a0c;
-    --surface: #16171b;
-    --surface-2: #1d1f24;
-    --surface-3: #1a1c21;
-    --border: #2b2e36;
-    --border-strong: #3c404a;
+    --bg: #04070d;
+    --surface: #0e151f;
+    --surface-2: #141d29;
+    --surface-3: #111924;
+    --border: #22303f;
+    --border-strong: #32465c;
 
-    --text: #f3f4f7;
-    --text-2: #b6bac4;
-    --muted: #a0a6b2;
+    --text: #eef4fa;
+    --text-2: #b0becd;
+    --muted: #9aabbd;
 
-    --brand: #6aabf0;
-    --brand-ink: #7ab6f4;
-    --brand-soft: #16293f;
+    --brand: #00c3ff;
+    --brand-ink: #62d6ff;
+    --brand-soft: #052536;
+    --brand-on: #04141f;
 
     --good: #4ade80;
     --good-soft: #10281b;
@@ -98,17 +106,17 @@
        text on a predictable background — a white veil over the hottest part
        of the bloom dropped muted text to 2.6:1. The hairline border is what
        separates one panel from the next once the fills are this faint. */
-    --glass-bg: rgba(14, 14, 17, 0.55);
-    --glass-bg-strong: rgba(14, 14, 17, 0.72);
-    --glass-border: rgba(255, 255, 255, 0.13);
+    --glass-bg: rgba(8, 14, 22, 0.55);
+    --glass-bg-strong: rgba(8, 14, 22, 0.72);
+    --glass-border: rgba(130, 220, 255, 0.16);
     --glass-blur: 22px;
     --glass-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
     --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.07);
 
-    /* Warm, smoky, low-saturation — a lit room, not an orange gradient. */
-    --mesh-1: rgba(222, 104, 46, 0.42);
-    --mesh-2: rgba(166, 44, 34, 0.38);
-    --mesh-3: rgba(104, 68, 140, 0.26);
+    /* The brand cyan, smoky and low-saturation — a lit room, not a gradient. */
+    --mesh-1: rgba(0, 150, 220, 0.34);
+    --mesh-2: rgba(0, 88, 170, 0.32);
+    --mesh-3: rgba(28, 60, 150, 0.24);
 
     --viz-collected: #4ade80;
     --viz-notcollected: #e66767;
@@ -126,20 +134,21 @@
 
   /* Near-black, so the warm bloom behind the panels is the only colour
      in the room and the glass has something to pick up. */
-  --bg: #0a0a0c;
-  --surface: #16171b;
-  --surface-2: #1d1f24;
-  --surface-3: #1a1c21;
-  --border: #2b2e36;
-  --border-strong: #3c404a;
+  --bg: #04070d;
+  --surface: #0e151f;
+  --surface-2: #141d29;
+  --surface-3: #111924;
+  --border: #22303f;
+  --border-strong: #32465c;
 
-  --text: #f3f4f7;
-  --text-2: #b6bac4;
-  --muted: #a0a6b2;
+  --text: #eef4fa;
+  --text-2: #b0becd;
+  --muted: #9aabbd;
 
-  --brand: #6aabf0;
-  --brand-ink: #7ab6f4;
-  --brand-soft: #16293f;
+  --brand: #00c3ff;
+  --brand-ink: #62d6ff;
+  --brand-soft: #052536;
+  --brand-on: #04141f;
 
   --good: #4ade80;
   --good-soft: #10281b;
@@ -155,17 +164,17 @@
      text on a predictable background — a white veil over the hottest part
      of the bloom dropped muted text to 2.6:1. The hairline border is what
      separates one panel from the next once the fills are this faint. */
-  --glass-bg: rgba(14, 14, 17, 0.55);
-  --glass-bg-strong: rgba(14, 14, 17, 0.72);
-  --glass-border: rgba(255, 255, 255, 0.13);
+  --glass-bg: rgba(8, 14, 22, 0.55);
+  --glass-bg-strong: rgba(8, 14, 22, 0.72);
+  --glass-border: rgba(130, 220, 255, 0.16);
   --glass-blur: 22px;
   --glass-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
   --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.07);
 
-  /* Warm, smoky, low-saturation — a lit room, not an orange gradient. */
-  --mesh-1: rgba(222, 104, 46, 0.42);
-  --mesh-2: rgba(166, 44, 34, 0.38);
-  --mesh-3: rgba(104, 68, 140, 0.26);
+  /* The brand cyan, smoky and low-saturation — a lit room, not a gradient. */
+  --mesh-1: rgba(0, 150, 220, 0.34);
+  --mesh-2: rgba(0, 88, 170, 0.32);
+  --mesh-3: rgba(28, 60, 150, 0.24);
 
   --viz-collected: #4ade80;
   --viz-notcollected: #e66767;
@@ -246,27 +255,31 @@ body::before {
 body::after {
   content: '';
   position: fixed;
-  right: max(3vw, 24px);
-  bottom: max(4vh, 28px);
-  width: min(42vw, 520px);
-  aspect-ratio: 1 / 1;
+  inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: url('/justlife-logo.png') no-repeat center / contain;
-  filter: grayscale(1) brightness(0.3);
-  opacity: 0.1;
+  /*
+   * The artwork is a wide logo letterboxed inside a square canvas, so
+   * background-size sets the width of that square and the visible mark ends
+   * up roughly a third as tall. Centred on the viewport and sized off the
+   * SMALLER axis, so it never runs off the sides on a narrow window.
+   */
+  background: url('/justlife-logo.png') no-repeat center center;
+  background-size: min(78vw, 70vh, 900px) auto;
+  filter: grayscale(1) brightness(0.35);
+  opacity: 0.13;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) body::after {
     filter: grayscale(1) brightness(2.4);
-    opacity: 0.08;
+    opacity: 0.24;
   }
 }
 
 :root[data-theme='dark'] body::after {
   filter: grayscale(1) brightness(2.4);
-  opacity: 0.08;
+  opacity: 0.24;
 }
 
 button,
@@ -363,18 +376,44 @@ code {
   min-width: 0;
 }
 
+/*
+ * The mark glows like a lit sign: a tight halo, a wide soft one, and a
+ * bright inner rim. Three stacked shadows rather than a filter, so it costs
+ * no extra compositing layer and the glyph itself stays crisp.
+ */
 .brand-mark {
   width: 34px;
   height: 34px;
   border-radius: 9px;
-  background: linear-gradient(135deg, var(--brand), var(--brand-ink));
-  color: #fff;
+  background: var(--brand);
+  color: var(--brand-on);
   display: grid;
   place-items: center;
-  font-weight: 700;
+  font-weight: 800;
   font-size: 17px;
   flex: none;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--brand) 35%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--brand) 70%, transparent),
+    0 0 14px color-mix(in srgb, var(--brand) 65%, transparent),
+    0 0 38px color-mix(in srgb, var(--brand) 40%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  animation: brandPulse 4.5s ease-in-out infinite;
+}
+
+/* A slow breath, so it reads as lit rather than as a static drop shadow. */
+@keyframes brandPulse {
+  50% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--brand) 80%, transparent),
+      0 0 20px color-mix(in srgb, var(--brand) 80%, transparent),
+      0 0 52px color-mix(in srgb, var(--brand) 55%, transparent),
+      inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  }
+}
+
+/* The wordmark picks up a trace of the same light. */
+.brand-text b:first-of-type {
+  text-shadow: 0 0 18px color-mix(in srgb, var(--brand) 45%, transparent);
 }
 
 .brand-text {
@@ -904,7 +943,7 @@ code {
 .btn-primary {
   background: var(--brand);
   border-color: var(--brand);
-  color: #fff;
+  color: var(--brand-on);
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -1752,7 +1791,7 @@ tr.is-saving {
 .company-tab.is-active {
   background: var(--brand);
   border-color: var(--brand);
-  color: #fff;
+  color: var(--brand-on);
   box-shadow: 0 2px 10px color-mix(in srgb, var(--brand) 30%, transparent);
 }
 
@@ -2110,6 +2149,13 @@ textarea {
 .btn-primary {
   background: var(--brand);
   border-color: var(--brand);
+  color: var(--brand-on);
+}
+
+/* The hover state has to stay legible too — --brand-ink is a TEXT colour,
+   which in light mode is dark, so a fill of it needs light text. */
+.btn-primary:hover:not(:disabled) {
+  color: var(--surface);
 }
 
 /* Modals and the reminder preview dim and blur what is behind them. */
@@ -2810,4 +2856,50 @@ tbody td {
 .progress-head,
 .ageing-head {
   letter-spacing: -0.01em;
+}
+
+/* ==========================================================================
+   Centred brand
+   The mark and wordmark sit in the middle of the top bar at a larger size,
+   with the controls kept to the right. A three-column grid rather than
+   flex, so the brand stays optically centred on the page no matter how wide
+   the right-hand block grows (the "Updating as" chip changes width with the
+   name in it, and `space-between` would shunt the brand sideways).
+   ========================================================================== */
+
+@media (min-width: 781px) {
+  .topbar-inner {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    justify-content: initial;
+    padding-top: 18px;
+  }
+
+  .brand {
+    grid-column: 2;
+    justify-self: center;
+    gap: 14px;
+  }
+
+  .topbar-right {
+    grid-column: 3;
+    justify-self: end;
+  }
+
+  .brand-mark {
+    width: 44px;
+    height: 44px;
+    border-radius: 13px;
+    font-size: 23px;
+  }
+
+  .brand-text {
+    font-size: 23px;
+    letter-spacing: -0.015em;
+  }
+
+  .brand-chip {
+    /* Already said by the centred wordmark at this size. */
+    display: none;
+  }
 }
