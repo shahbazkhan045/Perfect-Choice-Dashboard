@@ -2,7 +2,17 @@ import { google, type sheets_v4 } from 'googleapis';
 import { JWT } from 'google-auth-library';
 import { SHEET_ID, TABS } from './config';
 import { clean, formatStampCell, nowStamp, todayIso, toIsoDate, toNumber, toPercent } from './parse';
-import type { CanxRow, CashRow, CompanyMonthlyPerf, CompanyPerfRow, Role, Section } from './types';
+import type {
+  CanxRow,
+  CashRow,
+  CompanyMonthlyPerf,
+  CompanyPerfRow,
+  OnTimeCleanerDay,
+  OnTimeMonthly,
+  OnTimeVanDay,
+  Role,
+  Section,
+} from './types';
 import { ROLE_LABELS } from './types';
 
 // ---------------------------------------------------------------------------
@@ -276,22 +286,38 @@ interface RawWorkbook {
   cash: { raw: Grid; display: Grid };
   canx: { raw: Grid; display: Grid };
   companyPerf: { raw: Grid; display: Grid };
+  onTime: { raw: Grid; display: Grid };
   responses: { raw: Grid };
 }
+
+const EMPTY_PAIR = { raw: [] as Grid, display: [] as Grid };
 
 async function fetchWorkbook(): Promise<RawWorkbook> {
   await assertSourceTabs();
   await ensureTab(TABS.RESPONSES, RESPONSE_HEADERS);
 
-  // Optional tab — its absence should never break Cash Collection or
-  // Cancellations, so it's only requested when actually present.
+  // Optional tabs — their absence should never break Cash Collection or
+  // Cancellations, so each is only requested when actually present. Ranges
+  // are assembled with their own names so the result indices stay correct
+  // however many of the optional tabs happen to exist.
   const tabs = await listTabs();
-  const hasCompanyPerf = tabs.has(TABS.COMPANY_PERF);
-
   const api = sheetsClient();
-  const formattedRanges = [`${quoteTab(TABS.CASH)}!A1:Z`, `${quoteTab(TABS.CANX)}!A1:Z`];
-  if (hasCompanyPerf) formattedRanges.push(`${quoteTab(TABS.COMPANY_PERF)}!A1:Z`);
-  const ranges = [...formattedRanges, `${quoteTab(TABS.RESPONSES)}!A1:Z`];
+
+  // Both grids are wanted for these: UNFORMATTED for the real values,
+  // FORMATTED so toPercent() can read the sheet's own "0.00%" rendering.
+  type GridPairName = 'cash' | 'canx' | 'companyPerf' | 'onTime';
+  const displayRanges: { name: GridPairName; range: string }[] = [
+    { name: 'cash', range: `${quoteTab(TABS.CASH)}!A1:Z` },
+    { name: 'canx', range: `${quoteTab(TABS.CANX)}!A1:Z` },
+  ];
+  if (tabs.has(TABS.COMPANY_PERF)) {
+    displayRanges.push({ name: 'companyPerf', range: `${quoteTab(TABS.COMPANY_PERF)}!A1:Z` });
+  }
+  if (tabs.has(TABS.ONTIME)) {
+    // Wider than the A1:Z the other tabs use — the fourth block runs to AJ.
+    displayRanges.push({ name: 'onTime', range: `${quoteTab(TABS.ONTIME)}!A1:AJ` });
+  }
+  const ranges = [...displayRanges.map((r) => r.range), `${quoteTab(TABS.RESPONSES)}!A1:Z`];
 
   const [unformatted, formatted] = await Promise.all([
     api.spreadsheets.values.batchGet({
@@ -302,7 +328,7 @@ async function fetchWorkbook(): Promise<RawWorkbook> {
     }),
     api.spreadsheets.values.batchGet({
       spreadsheetId: SHEET_ID,
-      ranges: formattedRanges,
+      ranges: displayRanges.map((r) => r.range),
       valueRenderOption: 'FORMATTED_VALUE',
     }),
   ]);
@@ -310,14 +336,20 @@ async function fetchWorkbook(): Promise<RawWorkbook> {
   const u = unformatted.data.valueRanges || [];
   const f = formatted.data.valueRanges || [];
 
-  return {
-    cash: { raw: (u[0]?.values as Grid) || [], display: (f[0]?.values as Grid) || [] },
-    canx: { raw: (u[1]?.values as Grid) || [], display: (f[1]?.values as Grid) || [] },
-    companyPerf: hasCompanyPerf
-      ? { raw: (u[2]?.values as Grid) || [], display: (f[2]?.values as Grid) || [] }
-      : { raw: [], display: [] },
-    responses: { raw: (u[hasCompanyPerf ? 3 : 2]?.values as Grid) || [] },
+  const out: RawWorkbook = {
+    cash: { ...EMPTY_PAIR },
+    canx: { ...EMPTY_PAIR },
+    companyPerf: { ...EMPTY_PAIR },
+    onTime: { ...EMPTY_PAIR },
+    responses: { raw: (u[displayRanges.length]?.values as Grid) || [] },
   };
+  displayRanges.forEach((r, i) => {
+    out[r.name] = {
+      raw: (u[i]?.values as Grid) || [],
+      display: (f[i]?.values as Grid) || [],
+    };
+  });
+  return out;
 }
 
 function parseResponses(grid: Grid): Map<string, ResponseEntry> {
@@ -396,6 +428,9 @@ export interface WorkbookResult {
   canxMonthlyPct: Record<string, number>;
   companyPerf: CompanyPerfRow[];
   companyMonthly: CompanyMonthlyPerf[];
+  onTimeVanDaily: OnTimeVanDay[];
+  onTimeCleanerDaily: OnTimeCleanerDay[];
+  onTimeMonthly: OnTimeMonthly[];
 }
 
 // ---------------------------------------------------------------------------
@@ -502,6 +537,183 @@ function cancellationPctByMonth(rows: CompanyMonthlyPerf[]): Record<string, numb
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// On time %
+// ---------------------------------------------------------------------------
+
+/**
+ * The "On Time %" tab holds four tables side by side, each separated from the
+ * next by one empty column, and they deliberately reuse header text across
+ * blocks ("Company", "Van Name", "On Time %" all appear up to four times).
+ * indexHeaders() can't tell those apart, so a block is located the same way
+ * parseCompanyMonthlyPerf locates the MTD table: find the n-th occurrence of
+ * the block's own FIRST header, then read the rest at fixed offsets. Each
+ * offset's header is checked against what's expected and a block that doesn't
+ * line up is skipped with a warning rather than throwing — the tab is
+ * refilled by a separate Apps Script, so a layout change there must degrade
+ * to "no on-time data" and never take the dashboard down.
+ */
+function locateBlock(
+  header: unknown[],
+  labels: readonly string[],
+  occurrence: number,
+  what: string,
+): number {
+  let seen = 0;
+  let start = -1;
+  for (let c = 0; c < header.length; c++) {
+    if (norm(header[c]) === norm(labels[0])) {
+      seen++;
+      if (seen === occurrence) {
+        start = c;
+        break;
+      }
+    }
+  }
+  if (start < 0) return -1;
+
+  const mismatch = labels.findIndex((label, i) => norm(header[start + i]) !== norm(label));
+  if (mismatch > 0) {
+    console.warn(
+      `[sheets] "${TABS.ONTIME}" ${what}: expected "${labels[mismatch]}" at column ` +
+        `${colLetter(start + mismatch)}, found "${clean(header[start + mismatch])}" — block skipped.`,
+    );
+    return -1;
+  }
+  return start;
+}
+
+const ONTIME_VAN_DAY_HEADERS = [
+  'Time - Master Date', 'Company', 'Van Name', 'Cleaners',
+  'Exclusive Bookings', 'On Time #', 'Not On Time #', 'On Time %',
+] as const;
+
+const ONTIME_CLEANER_DAY_HEADERS = [
+  'Time - Master Date', 'Company', 'Cleaner ID', 'Cleaner Name', 'Van Name',
+  'Exclusive Bookings', 'On Time #', 'Not On Time #', 'On Time %',
+] as const;
+
+const ONTIME_VAN_MONTH_HEADERS = [
+  'Time - Year Month', 'Company', 'Van Name',
+  'Exclusive Bookings', 'On Time #', 'Not On Time #', 'On Time %',
+] as const;
+
+const ONTIME_CLEANER_MONTH_HEADERS = [
+  'Time - Year Month', 'Company', 'Cleaner ID', 'Cleaner Name', 'Van Name',
+  'Exclusive Bookings', 'On Time #', 'Not On Time #', 'On Time %',
+] as const;
+
+/** The van name used in the MTD van block for a company's whole-month total. */
+const ONTIME_TOTAL_SENTINEL = 'TOTAL';
+
+function parseOnTimeVanDaily(raw: Grid, display: Grid): OnTimeVanDay[] {
+  const start = locateBlock(raw[0] || [], ONTIME_VAN_DAY_HEADERS, 1, 'Daily - Van');
+  if (start < 0) return [];
+
+  const out: OnTimeVanDay[] = [];
+  for (let r = 1; r < raw.length; r++) {
+    const date = toIsoDate(cell(raw, r, start));
+    const company = clean(cell(raw, r, start + 1));
+    const van = clean(cell(raw, r, start + 2));
+    if (!date || !company || !van) continue;
+
+    out.push({
+      date,
+      dateRaw: clean(cell(display, r, start)),
+      company,
+      van,
+      cleaners: toNumber(cell(raw, r, start + 3)),
+      exclusiveBookings: toNumber(cell(raw, r, start + 4)),
+      onTime: toNumber(cell(raw, r, start + 5)),
+      notOnTime: toNumber(cell(raw, r, start + 6)),
+      onTimePct: toPercent(cell(raw, r, start + 7), cell(display, r, start + 7)),
+    });
+  }
+  return out;
+}
+
+function parseOnTimeCleanerDaily(raw: Grid, display: Grid): OnTimeCleanerDay[] {
+  const start = locateBlock(raw[0] || [], ONTIME_CLEANER_DAY_HEADERS, 2, 'Daily - Cleaner');
+  if (start < 0) return [];
+
+  const out: OnTimeCleanerDay[] = [];
+  for (let r = 1; r < raw.length; r++) {
+    const date = toIsoDate(cell(raw, r, start));
+    const company = clean(cell(raw, r, start + 1));
+    const cleanerName = clean(cell(raw, r, start + 3));
+    if (!date || !company || !cleanerName) continue;
+
+    out.push({
+      date,
+      dateRaw: clean(cell(display, r, start)),
+      company,
+      cleanerId: clean(cell(raw, r, start + 2)),
+      cleanerName,
+      van: clean(cell(raw, r, start + 4)),
+      exclusiveBookings: toNumber(cell(raw, r, start + 5)),
+      onTime: toNumber(cell(raw, r, start + 6)),
+      notOnTime: toNumber(cell(raw, r, start + 7)),
+      onTimePct: toPercent(cell(raw, r, start + 8), cell(display, r, start + 8)),
+    });
+  }
+  return out;
+}
+
+/** Both MTD blocks, concatenated — van-level (plus company TOTAL rows) then cleaner-level. */
+function parseOnTimeMonthly(raw: Grid, display: Grid): OnTimeMonthly[] {
+  const header = raw[0] || [];
+  const out: OnTimeMonthly[] = [];
+
+  const vanStart = locateBlock(header, ONTIME_VAN_MONTH_HEADERS, 1, 'MTD - Van');
+  if (vanStart >= 0) {
+    for (let r = 1; r < raw.length; r++) {
+      const date = toIsoDate(cell(raw, r, vanStart));
+      const company = clean(cell(raw, r, vanStart + 1));
+      const van = clean(cell(raw, r, vanStart + 2));
+      if (!date || !company || !van) continue;
+
+      const isTotal = van.toUpperCase() === ONTIME_TOTAL_SENTINEL;
+      out.push({
+        month: date.slice(0, 7),
+        company,
+        level: isTotal ? 'company' : 'van',
+        cleanerId: '',
+        cleanerName: '',
+        van: isTotal ? '' : van,
+        exclusiveBookings: toNumber(cell(raw, r, vanStart + 3)),
+        onTime: toNumber(cell(raw, r, vanStart + 4)),
+        notOnTime: toNumber(cell(raw, r, vanStart + 5)),
+        onTimePct: toPercent(cell(raw, r, vanStart + 6), cell(display, r, vanStart + 6)),
+      });
+    }
+  }
+
+  const cleanerStart = locateBlock(header, ONTIME_CLEANER_MONTH_HEADERS, 2, 'MTD - Cleaner');
+  if (cleanerStart >= 0) {
+    for (let r = 1; r < raw.length; r++) {
+      const date = toIsoDate(cell(raw, r, cleanerStart));
+      const company = clean(cell(raw, r, cleanerStart + 1));
+      const cleanerName = clean(cell(raw, r, cleanerStart + 3));
+      if (!date || !company || !cleanerName) continue;
+
+      out.push({
+        month: date.slice(0, 7),
+        company,
+        level: 'cleaner',
+        cleanerId: clean(cell(raw, r, cleanerStart + 2)),
+        cleanerName,
+        van: clean(cell(raw, r, cleanerStart + 4)),
+        exclusiveBookings: toNumber(cell(raw, r, cleanerStart + 5)),
+        onTime: toNumber(cell(raw, r, cleanerStart + 6)),
+        notOnTime: toNumber(cell(raw, r, cleanerStart + 7)),
+        onTimePct: toPercent(cell(raw, r, cleanerStart + 8), cell(display, r, cleanerStart + 8)),
+      });
+    }
+  }
+
+  return out;
+}
+
 /**
  * Cancellations has no "Company" column of its own, so each row's company
  * is looked up against Company Performance's own van-name -> company map,
@@ -530,6 +742,9 @@ export async function readWorkbook(): Promise<WorkbookResult> {
 
   const companyPerf = parseCompanyPerf(wb.companyPerf.raw, wb.companyPerf.display);
   const companyMonthly = parseCompanyMonthlyPerf(wb.companyPerf.raw, wb.companyPerf.display);
+  const onTimeVanDaily = parseOnTimeVanDaily(wb.onTime.raw, wb.onTime.display);
+  const onTimeCleanerDaily = parseOnTimeCleanerDaily(wb.onTime.raw, wb.onTime.display);
+  const onTimeMonthly = parseOnTimeMonthly(wb.onTime.raw, wb.onTime.display);
   const { vanToCompany, cleanerToCompany } = buildCompanyMaps(companyPerf);
   const companyForCanx = (van: string, cleaner: string): string =>
     vanToCompany.get(van) || cleanerToCompany.get(cleaner) || '';
@@ -638,7 +853,17 @@ export async function readWorkbook(): Promise<WorkbookResult> {
 
   const canxTotalPct = canxMonthlyPct[todayIso().slice(0, 7)] ?? null;
 
-  return { cash, canx, canxTotalPct, canxMonthlyPct, companyPerf, companyMonthly };
+  return {
+    cash,
+    canx,
+    canxTotalPct,
+    canxMonthlyPct,
+    companyPerf,
+    companyMonthly,
+    onTimeVanDaily,
+    onTimeCleanerDaily,
+    onTimeMonthly,
+  };
 }
 
 // ---------------------------------------------------------------------------

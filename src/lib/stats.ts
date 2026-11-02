@@ -5,6 +5,9 @@ import type {
   CashRow,
   CompanyMonthlyPerf,
   CompanyPerfRow,
+  OnTimeCleanerDay,
+  OnTimeMonthly,
+  OnTimeVanDay,
   ReminderStats,
 } from './types';
 
@@ -391,6 +394,122 @@ export function companyKpis(
 }
 
 // ---------------------------------------------------------------------------
+// On time % — all four blocks of the "On Time %" tab, read-only.
+//
+// Two rules decide where every figure below comes from:
+//  - A LATE COUNT is always "Not On Time #" summed from a daily block. The
+//    cleaner block only lists cleaner x van x day rows below 100%, but a day
+//    that's missing is a 100% day with nothing late, so the sum is exact.
+//  - An ON TIME % always needs a denominator that is known to be complete.
+//    For a van that's the daily block (it carries every van with exclusive
+//    bookings, every day), so any date range works. For a cleaner it is only
+//    the MTD block, which covers the previous and current month —
+//    deliberately NOT the daily cleaner block, whose missing 100% days would
+//    make a cleaner look far worse than she is. Outside those months a
+//    cleaner's On Time % is unknown and renders as "—", never as a number.
+// ---------------------------------------------------------------------------
+
+/** Below this, an On Time % is flagged in the tables. */
+export const ON_TIME_WARN_PCT = 85;
+
+/** The three "On Time %" blocks, passed around together. */
+export interface OnTimeData {
+  vanDaily: OnTimeVanDay[];
+  cleanerDaily: OnTimeCleanerDay[];
+  monthly: OnTimeMonthly[];
+}
+
+/** Stand-in for when the tab is absent, so callers can skip the argument. */
+export const NO_ONTIME: OnTimeData = { vanDaily: [], cleanerDaily: [], monthly: [] };
+
+export interface OnTimeSummary {
+  onTime: number;
+  exclusiveBookings: number;
+  pct: number;
+}
+
+/**
+ * A company's On Time % for a month, summed from the Daily - Van block —
+ * complete and append-only, so it covers the whole month without needing the
+ * MTD table (whose TOTAL rows should agree with it, and do).
+ *
+ * Returns null when the company had no exclusive bookings that month at all,
+ * which is the normal state for "Excl Perfect Choice": on time is only
+ * measured for exclusive bookings, so the honest answer there is "not
+ * tracked" and never 0%.
+ */
+export function companyOnTime(
+  vanDaily: OnTimeVanDay[],
+  company: string,
+  month: string,
+): OnTimeSummary | null {
+  let onTime = 0;
+  let exclusiveBookings = 0;
+  for (const r of vanDaily) {
+    if (r.company !== company || !r.date || monthOf(r.date) !== month) continue;
+    onTime += r.onTime;
+    exclusiveBookings += r.exclusiveBookings;
+  }
+  if (exclusiveBookings <= 0) return null;
+  return { onTime, exclusiveBookings, pct: (onTime / exclusiveBookings) * 100 };
+}
+
+const inDateRange = (date: string, range: { from: string; to: string }) =>
+  Boolean(date) && date >= range.from && date <= range.to;
+
+/** A van's On Time % over any date range — the daily block is complete, so this always works. */
+function vanOnTimePct(
+  vanDaily: OnTimeVanDay[],
+  van: string,
+  range: { from: string; to: string },
+): number | null {
+  let onTime = 0;
+  let exclusiveBookings = 0;
+  for (const r of vanDaily) {
+    if (r.van !== van || !inDateRange(r.date, range)) continue;
+    onTime += r.onTime;
+    exclusiveBookings += r.exclusiveBookings;
+  }
+  return exclusiveBookings > 0 ? (onTime / exclusiveBookings) * 100 : null;
+}
+
+/**
+ * A cleaner's On Time % for a whole month, from the MTD block only (summed
+ * across her vans). null whenever that month isn't one the MTD block covers.
+ */
+function cleanerOnTimePct(
+  monthly: OnTimeMonthly[],
+  cleanerName: string,
+  month: string,
+): number | null {
+  let onTime = 0;
+  let exclusiveBookings = 0;
+  for (const r of monthly) {
+    if (r.level !== 'cleaner' || r.month !== month || r.cleanerName !== cleanerName) continue;
+    onTime += r.onTime;
+    exclusiveBookings += r.exclusiveBookings;
+  }
+  return exclusiveBookings > 0 ? (onTime / exclusiveBookings) * 100 : null;
+}
+
+/** Late arrivals ("Not On Time #") for one cleaner or van over a date range. */
+function lateCountForRange(
+  onTime: OnTimeData,
+  name: string,
+  groupBy: DefaulterGroupBy,
+  range: { from: string; to: string },
+): number {
+  if (groupBy === 'van') {
+    return onTime.vanDaily
+      .filter((r) => r.van === name && inDateRange(r.date, range))
+      .reduce((s, r) => s + r.notOnTime, 0);
+  }
+  return onTime.cleanerDaily
+    .filter((r) => r.cleanerName === name && inDateRange(r.date, range))
+    .reduce((s, r) => s + r.notOnTime, 0);
+}
+
+// ---------------------------------------------------------------------------
 // Weekly buckets for the Defaulters "Weekly" tab — Monday-to-Sunday weeks
 // starting from a fixed anchor date, through the week containing "today".
 // Nothing is stored: a week is just its date range, computed on the fly.
@@ -435,7 +554,7 @@ export function weekBuckets(today: string): WeekBucket[] {
   return out.reverse();
 }
 
-export type DefaulterMetric = 'absent' | 'cancellations';
+export type DefaulterMetric = 'absent' | 'cancellations' | 'late';
 export type DefaulterGroupBy = 'cleaner' | 'van';
 
 export interface DefaulterEntry {
@@ -447,6 +566,10 @@ export interface DefaulterEntry {
   company: string;
   absentCount: number;
   cancellationCount: number;
+  /** Late arrivals in the period — "Not On Time #" from the daily blocks. */
+  lateCount: number;
+  /** On Time % for the period, or null when the denominator isn't known. */
+  onTimePct: number | null;
 }
 
 /**
@@ -462,6 +585,8 @@ export function defaultersList(
   range: { from: string; to: string },
   groupBy: DefaulterGroupBy,
   metric: DefaulterMetric,
+  onTime: OnTimeData = NO_ONTIME,
+  month?: string,
 ): DefaulterEntry[] {
   const inRange = (date: string) => Boolean(date) && date >= range.from && date <= range.to;
   const rows = new Map<string, DefaulterEntry>();
@@ -473,6 +598,8 @@ export function defaultersList(
     company,
     absentCount: 0,
     cancellationCount: 0,
+    lateCount: 0,
+    onTimePct: null,
   });
 
   for (const r of perf) {
@@ -496,13 +623,39 @@ export function defaultersList(
     rows.set(key, entry);
   }
 
+  // The on-time blocks carry their own Company column, so unlike
+  // Cancellations they need no van -> company lookup. A van or cleaner that
+  // was only ever late (never absent, never cancelled) belongs in this list
+  // too, so these rows can create an entry of their own.
+  for (const r of groupBy === 'van' ? onTime.vanDaily : onTime.cleanerDaily) {
+    if (!inRange(r.date)) continue;
+    const key = groupBy === 'van' ? r.van : (r as OnTimeCleanerDay).cleanerName;
+    if (!key) continue;
+    const entry = rows.get(key) ?? blank(key, groupBy === 'cleaner' ? r.van : r.company, r.company);
+    entry.lateCount += r.notOnTime;
+    if (!entry.company && r.company) entry.company = r.company;
+    if (groupBy === 'cleaner' && r.van && !entry.secondary) entry.secondary = r.van;
+    rows.set(key, entry);
+  }
+
+  for (const entry of rows.values()) {
+    entry.onTimePct =
+      groupBy === 'van'
+        ? vanOnTimePct(onTime.vanDaily, entry.name, range)
+        : month
+          ? cleanerOnTimePct(onTime.monthly, entry.name, month)
+          : null;
+  }
+
   return [...rows.values()]
-    .filter((e) => e.absentCount > 0 || e.cancellationCount > 0)
+    .filter((e) => e.absentCount > 0 || e.cancellationCount > 0 || e.lateCount > 0)
     .sort((a, b) => {
       const [primaryA, primaryB, secondaryA, secondaryB] =
         metric === 'absent'
           ? [a.absentCount, b.absentCount, a.cancellationCount, b.cancellationCount]
-          : [a.cancellationCount, b.cancellationCount, a.absentCount, b.absentCount];
+          : metric === 'cancellations'
+            ? [a.cancellationCount, b.cancellationCount, a.absentCount, b.absentCount]
+            : [a.lateCount, b.lateCount, a.absentCount, b.absentCount];
       return primaryB - primaryA || secondaryB - secondaryA || a.name.localeCompare(b.name);
     });
 }
@@ -514,8 +667,9 @@ export function defaultersListForMonth(
   month: string,
   groupBy: DefaulterGroupBy,
   metric: DefaulterMetric,
+  onTime: OnTimeData = NO_ONTIME,
 ): DefaulterEntry[] {
-  return defaultersList(perf, canx, monthRange(month), groupBy, metric);
+  return defaultersList(perf, canx, monthRange(month), groupBy, metric, onTime, month);
 }
 
 // ---------------------------------------------------------------------------
@@ -557,7 +711,8 @@ function countsForRange(
   name: string,
   groupBy: DefaulterGroupBy,
   range: { from: string; to: string },
-): { absentCount: number; cancellationCount: number } {
+  onTime: OnTimeData,
+): { absentCount: number; cancellationCount: number; lateCount: number } {
   const inRange = (date: string) => Boolean(date) && date >= range.from && date <= range.to;
   const absentCount = perf
     .filter((r) => inRange(r.date) && (groupBy === 'cleaner' ? r.cleanerName === name : r.van === name))
@@ -565,13 +720,18 @@ function countsForRange(
   const cancellationCount = canx
     .filter((r) => inRange(r.date) && (groupBy === 'cleaner' ? r.cleaner === name : r.van === name))
     .reduce((s, r) => s + (r.count || 1), 0);
-  return { absentCount, cancellationCount };
+  return {
+    absentCount,
+    cancellationCount,
+    lateCount: lateCountForRange(onTime, name, groupBy, range),
+  };
 }
 
 export interface HistoryPoint {
   label: string;
   absentCount: number;
   cancellationCount: number;
+  lateCount: number;
 }
 
 /**
@@ -586,11 +746,12 @@ export function cleanerMonthlyHistory(
   groupBy: DefaulterGroupBy,
   month: string,
   count = 4,
+  onTime: OnTimeData = NO_ONTIME,
 ): HistoryPoint[] {
   return recentMonths(month, count)
     .map((m) => ({
       label: formatMonthLabel(m),
-      ...countsForRange(perf, canx, name, groupBy, monthRange(m)),
+      ...countsForRange(perf, canx, name, groupBy, monthRange(m), onTime),
     }))
     .reverse();
 }
@@ -607,13 +768,14 @@ export function cleanerWeeklyHistory(
   groupBy: DefaulterGroupBy,
   weekKey: string,
   count = 3,
+  onTime: OnTimeData = NO_ONTIME,
 ): HistoryPoint[] {
   return recentWeekKeys(weekKey, count)
     .map((k) => {
       const bucket = weekBucketFor(k);
       return {
         label: bucket.label,
-        ...countsForRange(perf, canx, name, groupBy, { from: bucket.start, to: bucket.end }),
+        ...countsForRange(perf, canx, name, groupBy, { from: bucket.start, to: bucket.end }, onTime),
       };
     })
     .reverse();
@@ -624,6 +786,8 @@ export interface VanCleanerBreakdown {
   cleanerName: string;
   absentCount: number;
   cancellationCount: number;
+  /** Late arrivals on THIS van — these sum to the van's own Not On Time # for the period. */
+  lateCount: number;
 }
 
 /**
@@ -637,6 +801,7 @@ export function vanCleanerBreakdown(
   van: string,
   range: { from: string; to: string },
   metric: DefaulterMetric,
+  onTime: OnTimeData = NO_ONTIME,
 ): VanCleanerBreakdown[] {
   const inRange = (date: string) => Boolean(date) && date >= range.from && date <= range.to;
   const rows = new Map<string, VanCleanerBreakdown>();
@@ -649,6 +814,7 @@ export function vanCleanerBreakdown(
       cleanerName: r.cleanerName,
       absentCount: 0,
       cancellationCount: 0,
+      lateCount: 0,
     };
     row.absentCount += r.count;
     rows.set(key, row);
@@ -664,16 +830,40 @@ export function vanCleanerBreakdown(
       cleanerName: r.cleaner,
       absentCount: 0,
       cancellationCount: 0,
+      lateCount: 0,
     };
     row.cancellationCount += r.count || 1;
     rows.set(key, row);
   }
 
+  // The daily cleaner block carries a van of its own, so a cleaner's late
+  // arrivals land on the van she was actually driving that day.
+  for (const r of onTime.cleanerDaily) {
+    if (r.van !== van || !inRange(r.date) || !r.cleanerName) continue;
+    const existingKey =
+      (r.cleanerId && rows.has(r.cleanerId) ? r.cleanerId : undefined) ??
+      [...rows.keys()].find((k) => rows.get(k)!.cleanerName === r.cleanerName);
+    const key = existingKey ?? (r.cleanerId || r.cleanerName);
+    const row = rows.get(key) ?? {
+      cleanerId: r.cleanerId,
+      cleanerName: r.cleanerName,
+      absentCount: 0,
+      cancellationCount: 0,
+      lateCount: 0,
+    };
+    row.lateCount += r.notOnTime;
+    rows.set(key, row);
+  }
+
   return [...rows.values()]
-    .filter((r) => r.absentCount > 0 || r.cancellationCount > 0)
+    .filter((r) => r.absentCount > 0 || r.cancellationCount > 0 || r.lateCount > 0)
     .sort((a, b) => {
       const [primaryA, primaryB] =
-        metric === 'absent' ? [a.absentCount, b.absentCount] : [a.cancellationCount, b.cancellationCount];
+        metric === 'absent'
+          ? [a.absentCount, b.absentCount]
+          : metric === 'cancellations'
+            ? [a.cancellationCount, b.cancellationCount]
+            : [a.lateCount, b.lateCount];
       return primaryB - primaryA || a.cleanerName.localeCompare(b.cleanerName);
     });
 }
@@ -705,6 +895,14 @@ export interface CompanyCleanerRollupRow {
    */
   absentShare: number;
   cancellationCount: number;
+  /** Late arrivals in scope, from the daily cleaner block. */
+  lateCount: number;
+  /**
+   * On Time % for the selected month, from the MTD cleaner block — null
+   * outside the months it covers. Deliberately not narrowed by the Date range
+   * filter, since the MTD block only knows whole months.
+   */
+  onTimePct: number | null;
   /** Most recent date this cleaner appears in scope — the table's sort key. */
   lastDate: string;
 }
@@ -721,6 +919,7 @@ export function companyCleanerRollup(
   canx: CanxRow[],
   month: string,
   filters: CompanyCleanerRollupFilters,
+  onTime: OnTimeData = NO_ONTIME,
 ): CompanyCleanerRollupRow[] {
   const cleanerTerm = (filters.cleanerName || '').trim().toLowerCase();
   const vanTerm = (filters.van || '').trim().toLowerCase();
@@ -767,6 +966,8 @@ export function companyCleanerRollup(
       absentCount: 0,
       absentShare: 0,
       cancellationCount: 0,
+      lateCount: 0,
+      onTimePct: null,
       lastDate: '',
     };
     row.absentCount += r.count;
@@ -794,6 +995,8 @@ export function companyCleanerRollup(
       absentCount: 0,
       absentShare: 0,
       cancellationCount: 0,
+      lateCount: 0,
+      onTimePct: null,
       lastDate: '',
     };
     row.cancellationCount += r.count || 1;
@@ -804,8 +1007,39 @@ export function companyCleanerRollup(
     rows.set(key, row);
   }
 
+  // Late arrivals respect exactly the same filters as the rest of the table.
+  for (const r of onTime.cleanerDaily) {
+    if (!inBaseScope(r.date, r.company) || !r.cleanerName) continue;
+    if (cleanerTerm && !r.cleanerName.toLowerCase().includes(cleanerTerm)) continue;
+    if (vanTerm && !r.van.toLowerCase().includes(vanTerm)) continue;
+
+    const existingKey =
+      (r.cleanerId && rows.has(r.cleanerId) ? r.cleanerId : undefined) ??
+      [...rows.keys()].find((k) => rows.get(k)!.cleanerName === r.cleanerName);
+    const key = existingKey ?? (r.cleanerId || r.cleanerName);
+    const row = rows.get(key) ?? {
+      cleanerId: r.cleanerId,
+      cleanerName: r.cleanerName,
+      company: r.company,
+      van: r.van,
+      absentCount: 0,
+      absentShare: 0,
+      cancellationCount: 0,
+      lateCount: 0,
+      onTimePct: null,
+      lastDate: '',
+    };
+    row.lateCount += r.notOnTime;
+    if (r.date > row.lastDate) {
+      row.lastDate = r.date;
+      row.van = r.van || row.van;
+    }
+    rows.set(key, row);
+  }
+
   for (const row of rows.values()) {
     row.absentShare = totalAbsent > 0 ? (row.absentCount / totalAbsent) * 100 : 0;
+    row.onTimePct = cleanerOnTimePct(onTime.monthly, row.cleanerName, month);
   }
 
   return [...rows.values()].sort(

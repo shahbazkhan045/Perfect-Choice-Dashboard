@@ -8,6 +8,7 @@ import {
   companyCleanerRollup,
   companyKpis,
   companyMonthOptions,
+  companyOnTime,
   defaultersList,
   defaultersListForMonth,
   distinctCleanerNames,
@@ -17,8 +18,10 @@ import {
   monthRange,
   vanCleanerBreakdown,
   weekBuckets,
+  ON_TIME_WARN_PCT,
   type DefaulterGroupBy,
   type DefaulterMetric,
+  type OnTimeData,
 } from '@/lib/stats';
 import { formatDmy } from '@/lib/parse';
 import { downloadCsv, toCsv } from '@/lib/csv';
@@ -30,6 +33,24 @@ function pctLabel(pct: number | null): string {
 
 function numLabel(n: number | null): string {
   return n != null ? String(n) : '—';
+}
+
+/**
+ * On Time % is only known where the denominator is complete — see the
+ * on-time section of lib/stats.ts. Everywhere else it has to read as "—"
+ * rather than as a number, so nobody mistakes an unknown for a bad score.
+ */
+const UNKNOWN_ON_TIME = "On time is only measured for exclusive bookings, and only for months the sheet's MTD table covers.";
+
+function OnTimeCell({ pct }: { pct: number | null }) {
+  if (pct == null) {
+    return (
+      <td className="num muted" title={UNKNOWN_ON_TIME}>
+        —
+      </td>
+    );
+  }
+  return <td className={`num${pct < ON_TIME_WARN_PCT ? ' cell-warn' : ''}`}>{pct.toFixed(2)}%</td>;
 }
 
 type DefaulterView = 'monthly' | 'weekly';
@@ -80,12 +101,35 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
     [data.companyMonthly, selectedCompany, month],
   );
 
+  const onTime: OnTimeData = useMemo(
+    () => ({
+      vanDaily: data.onTimeVanDaily,
+      cleanerDaily: data.onTimeCleanerDaily,
+      monthly: data.onTimeMonthly,
+    }),
+    [data.onTimeVanDaily, data.onTimeCleanerDaily, data.onTimeMonthly],
+  );
+
+  // Summed from the Daily - Van block rather than read off the MTD TOTAL row:
+  // that block is complete and append-only, so it covers the whole month.
+  const companyOnTimeKpi = useMemo(
+    () => (selectedCompany ? companyOnTime(data.onTimeVanDaily, selectedCompany, month) : null),
+    [data.onTimeVanDaily, selectedCompany, month],
+  );
+
   const selectedWeek = weeks.find((w) => w.key === weekKey);
 
   const defaulters = useMemo(() => {
     if (defaulterView === 'monthly') {
       return month
-        ? defaultersListForMonth(data.companyPerf, data.canx, month, defaulterGroupBy, defaulterMetric)
+        ? defaultersListForMonth(
+            data.companyPerf,
+            data.canx,
+            month,
+            defaulterGroupBy,
+            defaulterMetric,
+            onTime,
+          )
         : [];
     }
     return selectedWeek
@@ -95,9 +139,10 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
           { from: selectedWeek.start, to: selectedWeek.end },
           defaulterGroupBy,
           defaulterMetric,
+          onTime,
         )
       : [];
-  }, [defaulterView, data.companyPerf, data.canx, month, selectedWeek, defaulterGroupBy, defaulterMetric]);
+  }, [defaulterView, data.companyPerf, data.canx, month, selectedWeek, defaulterGroupBy, defaulterMetric, onTime]);
 
   const defaulterScopeLabel =
     defaulterView === 'monthly' ? formatMonthLabel(month) : (selectedWeek?.label ?? '');
@@ -115,13 +160,29 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
     if (!expandedEntry) return [];
     if (defaulterView === 'monthly') {
       return month
-        ? cleanerMonthlyHistory(data.companyPerf, data.canx, expandedEntry.name, defaulterGroupBy, month)
+        ? cleanerMonthlyHistory(
+            data.companyPerf,
+            data.canx,
+            expandedEntry.name,
+            defaulterGroupBy,
+            month,
+            undefined,
+            onTime,
+          )
         : [];
     }
     return selectedWeek
-      ? cleanerWeeklyHistory(data.companyPerf, data.canx, expandedEntry.name, defaulterGroupBy, selectedWeek.key)
+      ? cleanerWeeklyHistory(
+          data.companyPerf,
+          data.canx,
+          expandedEntry.name,
+          defaulterGroupBy,
+          selectedWeek.key,
+          undefined,
+          onTime,
+        )
       : [];
-  }, [expandedEntry, defaulterView, month, selectedWeek, defaulterGroupBy, data.companyPerf, data.canx]);
+  }, [expandedEntry, defaulterView, month, selectedWeek, defaulterGroupBy, data.companyPerf, data.canx, onTime]);
 
   // Which cleaners actually make up an expanded van's current-period
   // number — only meaningful when grouped by van, and scoped to the same
@@ -137,16 +198,30 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
           ? { from: selectedWeek.start, to: selectedWeek.end }
           : null;
     return range
-      ? vanCleanerBreakdown(data.companyPerf, data.canx, expandedEntry.name, range, defaulterMetric)
+      ? vanCleanerBreakdown(
+          data.companyPerf,
+          data.canx,
+          expandedEntry.name,
+          range,
+          defaulterMetric,
+          onTime,
+        )
       : [];
-  }, [expandedEntry, defaulterGroupBy, defaulterView, month, selectedWeek, defaulterMetric, data.companyPerf, data.canx]);
+  }, [expandedEntry, defaulterGroupBy, defaulterView, month, selectedWeek, defaulterMetric, data.companyPerf, data.canx, onTime]);
 
   function downloadDefaulters() {
     const nameHeader = defaulterGroupBy === 'cleaner' ? 'Cleaner' : 'Van';
     const secondaryHeader = defaulterGroupBy === 'cleaner' ? 'Van' : 'Company';
     const csv = toCsv(
-      [nameHeader, secondaryHeader, 'Absent BD', 'Cancellations'],
-      defaulters.map((d) => [d.name, d.secondary, d.absentCount, d.cancellationCount]),
+      [nameHeader, secondaryHeader, 'Absent BD', 'Cancellations', 'Late arrivals', 'On Time %'],
+      defaulters.map((d) => [
+        d.name,
+        d.secondary,
+        d.absentCount,
+        d.cancellationCount,
+        d.lateCount,
+        d.onTimePct != null ? `${d.onTimePct.toFixed(2)}%` : '',
+      ]),
     );
     const scopeKey = defaulterView === 'monthly' ? month : weekKey;
     downloadCsv(`defaulters-${defaulterGroupBy}-${defaulterView}-${scopeKey}.csv`, csv);
@@ -170,9 +245,9 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
             dateTo: dateTo || undefined,
             cleanerName: cleanerFilter || undefined,
             van: vanFilter || undefined,
-          })
+          }, onTime)
         : [],
-    [data.companyPerf, data.canx, month, rawCompanyFilter, dateFrom, dateTo, cleanerFilter, vanFilter],
+    [data.companyPerf, data.canx, month, rawCompanyFilter, dateFrom, dateTo, cleanerFilter, vanFilter, onTime],
   );
 
   const hasFilters = Boolean(rawCompanyFilter || dateFrom || dateTo || cleanerFilter || vanFilter);
@@ -187,7 +262,18 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
 
   function download() {
     const csv = toCsv(
-      ['Cleaner ID', 'Cleaner name', 'Company', 'Van', 'Absent BD', 'Absent BD % (share)', 'Cancellations', 'Last activity'],
+      [
+        'Cleaner ID',
+        'Cleaner name',
+        'Company',
+        'Van',
+        'Absent BD',
+        'Absent BD % (share)',
+        'Cancellations',
+        'Late arrivals',
+        'On Time %',
+        'Last activity',
+      ],
       rollup.map((r) => [
         r.cleanerId,
         r.cleanerName,
@@ -196,6 +282,8 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
         r.absentCount,
         `${r.absentShare.toFixed(2)}%`,
         r.cancellationCount,
+        r.lateCount,
+        r.onTimePct != null ? `${r.onTimePct.toFixed(2)}%` : '',
         formatDmy(r.lastDate),
       ]),
     );
@@ -337,6 +425,8 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
                 <th className="num">Absent BD</th>
                 <th className="num">Absent BD % (share)</th>
                 <th className="num">Cancellations</th>
+                <th className="num">Late arrivals</th>
+                <th className="num">On Time %</th>
                 <th>Last activity</th>
               </tr>
             </thead>
@@ -353,12 +443,14 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
                     <td className="num">{r.absentCount}</td>
                     <td className="num">{r.absentShare.toFixed(2)}%</td>
                     <td className="num">{r.cancellationCount}</td>
+                    <td className="num">{r.lateCount}</td>
+                    <OnTimeCell pct={r.onTimePct} />
                     <td>{formatDmy(r.lastDate)}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={8} className="table-msg">
+                  <td colSpan={10} className="table-msg">
                     {hasFilters ? 'No rows match your filters.' : 'No data for this view.'}
                   </td>
                 </tr>
@@ -405,6 +497,27 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
               value={pctLabel(kpis.cancellationPct)}
               unit={kpis.cancellationPct == null ? 'not set in sheet' : undefined}
               tone={kpis.cancellationPct != null ? 'warn' : 'plain'}
+            />
+            <Kpi
+              label="On Time %"
+              value={companyOnTimeKpi ? `${companyOnTimeKpi.pct.toFixed(2)}%` : 'Not tracked'}
+              unit={
+                companyOnTimeKpi
+                  ? `on time ${companyOnTimeKpi.onTime.toLocaleString()} / ${companyOnTimeKpi.exclusiveBookings.toLocaleString()} bookings`
+                  : undefined
+              }
+              tone={
+                companyOnTimeKpi
+                  ? companyOnTimeKpi.pct < ON_TIME_WARN_PCT
+                    ? 'warn'
+                    : 'good'
+                  : 'plain'
+              }
+              title={
+                companyOnTimeKpi
+                  ? undefined
+                  : 'On time is only measured for exclusive bookings, and this company has none.'
+              }
             />
             <Kpi
               label="Avg rating"
@@ -497,6 +610,15 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
               >
                 Rank by Cancellations
               </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={defaulterMetric === 'late'}
+                className={`seg-toggle-btn${defaulterMetric === 'late' ? ' is-active' : ''}`}
+                onClick={() => setDefaulterMetric('late')}
+              >
+                Rank by Late arrivals
+              </button>
             </div>
             <button
               type="button"
@@ -523,6 +645,8 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
                   <th>{defaulterGroupBy === 'cleaner' ? 'Van' : 'Company'}</th>
                   <th className="num">Absent BD</th>
                   <th className="num">Cancellations</th>
+                  <th className="num">Late arrivals</th>
+                  <th className="num">On Time %</th>
                 </tr>
               </thead>
               <tbody>
@@ -560,10 +684,12 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
                         <td className={`num${d.cancellationCount > 2 ? ' cell-warn' : ''}`}>
                           {d.cancellationCount || <span className="muted">0</span>}
                         </td>
+                        <td className="num">{d.lateCount || <span className="muted">0</span>}</td>
+                        <OnTimeCell pct={d.onTimePct} />
                       </tr>
                       {expanded ? (
                         <tr className="history-row">
-                          <td colSpan={5}>
+                          <td colSpan={7}>
                             <div className="history-panels">
                               <div className="history-panel">
                                 <table className="history-inline-table">
@@ -572,6 +698,7 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
                                       <th>Period</th>
                                       <th className="num">Absent BD</th>
                                       <th className="num">Cancellations</th>
+                                      <th className="num">Late arrivals</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -584,6 +711,7 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
                                         <td className={`num${h.cancellationCount > 2 ? ' cell-warn' : ''}`}>
                                           {h.cancellationCount}
                                         </td>
+                                        <td className="num">{h.lateCount}</td>
                                       </tr>
                                     ))}
                                   </tbody>
@@ -602,6 +730,7 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
                                         <th>Cleaner on this van</th>
                                         <th className="num">Absent BD</th>
                                         <th className="num">Cancellations</th>
+                                        <th className="num">Late arrivals</th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -615,13 +744,22 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
                                           <td className={`num${ci === 0 ? ' cell-warn' : ''}`}>
                                             {c.cancellationCount}
                                           </td>
+                                          <td className={`num${ci === 0 ? ' cell-warn' : ''}`}>
+                                            {c.lateCount}
+                                          </td>
                                         </tr>
                                       ))}
                                     </tbody>
                                   </table>
                                   <p className="muted cp-history-hint">
-                                    Highest {defaulterMetric === 'absent' ? 'Absent BD' : 'Cancellations'} on this
-                                    van for {defaulterScopeLabel}, highlighted.
+                                    Highest{' '}
+                                    {defaulterMetric === 'absent'
+                                      ? 'Absent BD'
+                                      : defaulterMetric === 'cancellations'
+                                        ? 'Cancellations'
+                                        : 'Late arrivals'}{' '}
+                                    on this van for {defaulterScopeLabel}, highlighted. Late arrivals here add
+                                    up to the van&rsquo;s own Not On Time # for the same period.
                                   </p>
                                 </div>
                               ) : null}

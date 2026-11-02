@@ -84,15 +84,18 @@ export function Kpi({
   value,
   unit,
   tone = 'plain',
+  title,
 }: {
   label: string;
   value: string;
   unit?: string;
   tone?: Tone;
+  /** Hover text for the whole tile — used to explain a value like "Not tracked". */
+  title?: string;
 }) {
   const shown = useCountUp(value);
   return (
-    <div className="kpi">
+    <div className="kpi" title={title}>
       <span className="kpi-label">{label}</span>
       <span className={`kpi-value tone-${tone}`}>
         {shown}

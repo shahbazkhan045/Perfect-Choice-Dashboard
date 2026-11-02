@@ -9,6 +9,9 @@ export const TABS = {
   // Optional — read-only, and its absence never blocks the rest of the app.
   // See readWorkbook() in lib/sheets.ts.
   COMPANY_PERF: process.env.SHEET_TAB_COMPANY_PERF || 'Company Performance',
+  // Also optional, and strictly read-only: it's refilled from BigQuery by a
+  // separate Apps Script every morning, so this app must never write to it.
+  ONTIME: process.env.SHEET_TAB_ONTIME || 'On Time %',
   RESPONSES: process.env.SHEET_TAB_RESPONSES || '_Responses',
   AUDIT: process.env.SHEET_TAB_AUDIT || '_Audit',
 } as const;

@@ -12,8 +12,17 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const role = await requireRole();
-    const { cash, canx, canxTotalPct, canxMonthlyPct, companyPerf, companyMonthly } =
-      await readWorkbook();
+    const {
+      cash,
+      canx,
+      canxTotalPct,
+      canxMonthlyPct,
+      companyPerf,
+      companyMonthly,
+      onTimeVanDaily,
+      onTimeCleanerDaily,
+      onTimeMonthly,
+    } = await readWorkbook();
     const today = todayIso();
 
     const payload: DashboardData = {
@@ -31,6 +40,9 @@ export async function GET() {
       canxMonthlyPct,
       companyPerf,
       companyMonthly,
+      onTimeVanDaily,
+      onTimeCleanerDaily,
+      onTimeMonthly,
     };
 
     return NextResponse.json(payload, {

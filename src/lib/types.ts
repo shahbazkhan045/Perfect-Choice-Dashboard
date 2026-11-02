@@ -108,6 +108,66 @@ export interface CompanyMonthlyPerf {
   avgRating: number | null;
 }
 
+// ---------------------------------------------------------------------------
+// On time % — the "On Time %" tab, four side-by-side blocks, all read-only.
+// On Time % = On Time # / Exclusive Bookings, so only exclusive bookings are
+// measured at all; a company with none (Excl Perfect Choice) has no rows here
+// and must read as "Not tracked" rather than 0%.
+// ---------------------------------------------------------------------------
+
+/** Daily - Van block (columns A:H): every van with exclusive bookings, one row per day. */
+export interface OnTimeVanDay {
+  /** yyyy-MM-dd */
+  date: string;
+  dateRaw: string;
+  company: string;
+  van: string;
+  /** How many cleaners were on that van that day. */
+  cleaners: number;
+  exclusiveBookings: number;
+  onTime: number;
+  notOnTime: number;
+  onTimePct: number;
+}
+
+/**
+ * Daily - Cleaner block (columns J:R). Only cleaner x van x day combinations
+ * BELOW 100% appear here, so `notOnTime` summed over a range is a complete
+ * late-arrival count (a missing day is a 100% day) — but `exclusiveBookings`
+ * is NOT, which is why a cleaner's On Time % never comes from this block.
+ */
+export interface OnTimeCleanerDay {
+  date: string;
+  dateRaw: string;
+  company: string;
+  cleanerId: string;
+  cleanerName: string;
+  van: string;
+  exclusiveBookings: number;
+  onTime: number;
+  notOnTime: number;
+  onTimePct: number;
+}
+
+/**
+ * The two MTD blocks: per van (columns T:Z) and per cleaner x van (AB:AJ),
+ * for the previous and current month only. In the van block a Van Name of
+ * "TOTAL" is the company's own whole-month figure, kept as level 'company'.
+ */
+export interface OnTimeMonthly {
+  /** yyyy-MM */
+  month: string;
+  company: string;
+  level: 'company' | 'van' | 'cleaner';
+  cleanerId: string;
+  cleanerName: string;
+  van: string;
+  exclusiveBookings: number;
+  onTime: number;
+  notOnTime: number;
+  onTimePct: number;
+}
+
 export interface DashboardData {
   role: Role;
   roleLabel: string;
@@ -136,6 +196,12 @@ export interface DashboardData {
   companyPerf: CompanyPerfRow[];
   /** That tab's own per-month-per-company MTD summary, if present. */
   companyMonthly: CompanyMonthlyPerf[];
+  /** "On Time %" tab, Daily - Van block — [] when the tab is absent or empty. */
+  onTimeVanDaily: OnTimeVanDay[];
+  /** "On Time %" tab, Daily - Cleaner block (below-100% rows only). */
+  onTimeCleanerDaily: OnTimeCleanerDay[];
+  /** "On Time %" tab, both MTD blocks combined — see OnTimeMonthly.level. */
+  onTimeMonthly: OnTimeMonthly[];
 }
 
 export interface ReminderStats {
