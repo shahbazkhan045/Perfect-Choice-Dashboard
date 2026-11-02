@@ -193,3 +193,77 @@ export function PencilIcon(props: IconProps) {
     </Svg>
   );
 }
+
+/** A rate or percentage. */
+export function PercentIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M19 5 5 19" />
+      <circle cx="6.5" cy="6.5" r="2.5" />
+      <circle cx="17.5" cy="17.5" r="2.5" />
+    </Svg>
+  );
+}
+
+/** Punctuality / on time. */
+export function ClockIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3.5 2" />
+    </Svg>
+  );
+}
+
+/** An absence — someone who was expected and did not come. */
+export function UserMinusIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M15 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="8.5" cy="7" r="4" />
+      <path d="M17 11h5" />
+    </Svg>
+  );
+}
+
+/** A count of entries still waiting on someone. */
+export function HourglassIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6 3h12M6 21h12" />
+      <path d="M8 3v4a4 4 0 0 0 8 0V3" />
+      <path d="M8 21v-4a4 4 0 0 1 8 0v4" />
+    </Svg>
+  );
+}
+
+/** Money in hand. */
+export function WalletIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2" />
+      <rect width="18" height="13" x="3" y="7" rx="2" />
+      <path d="M16 13h3" />
+    </Svg>
+  );
+}
+
+/** A ticket raised with support. */
+export function TicketIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2 2 2 0 0 0 0 4 2 2 0 0 1-2 2H5a2 2 0 0 1-2-2 2 2 0 0 0 0-4Z" />
+      <path d="M12 7v10" />
+    </Svg>
+  );
+}
+
+/** A written reason or note. */
+export function NoteIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z" />
+      <path d="M8 8h8M8 12h8M8 16h5" />
+    </Svg>
+  );
+}

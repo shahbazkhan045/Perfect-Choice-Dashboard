@@ -25,7 +25,14 @@ import {
 } from '@/components/ui';
 import DayBarChart, { type DayDatum } from '@/components/DayBarChart';
 import type { SectionProps } from '@/components/Dashboard';
-import { DownloadIcon, PaperclipIcon } from '@/components/icons';
+import {
+  BanIcon,
+  DownloadIcon,
+  HourglassIcon,
+  NoteIcon,
+  PaperclipIcon,
+  PercentIcon,
+} from '@/components/icons';
 
 /** PDFs open in a new tab; everything else previews inline in a modal. */
 function isLikelyImage(url: string): boolean {
@@ -184,20 +191,32 @@ export default function CanxSection({
           ) : null}
 
           <div className="kpi-row kpi-row-4">
-            <Kpi label={`Cancellations & releases · ${scope}`} value={String(kpis.total)} />
             <Kpi
+              icon={<BanIcon size={17} />}
+              label={`Cancellations & releases · ${scope}`}
+              value={String(kpis.total)}
+            />
+            <Kpi
+              icon={<PercentIcon size={17} />}
               label={`Total cancellation rate${expandedSummary ? ` · ${scope}` : ''}`}
               value={pctLabel(totalRatePct)}
               unit={totalRatePct == null ? 'not set in sheet' : undefined}
               tone={totalRatePct != null ? 'warn' : 'plain'}
             />
             <Kpi
+              icon={<HourglassIcon size={17} />}
               label="Awaiting a reason"
               value={String(kpis.awaiting)}
               unit="rows"
               tone={kpis.awaiting ? 'warn' : 'plain'}
             />
-            <Kpi label="Reasons provided" value={String(kpis.provided)} unit="rows" tone="good" />
+            <Kpi
+              icon={<NoteIcon size={17} />}
+              label="Reasons provided"
+              value={String(kpis.provided)}
+              unit="rows"
+              tone="good"
+            />
           </div>
         </>
       )}

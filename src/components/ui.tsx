@@ -1,5 +1,7 @@
 'use client';
 
+import type { ReactNode } from 'react';
+
 import { useEffect, useRef, useState } from 'react';
 import type { FilterKey } from '@/lib/stats';
 import { formatDmy } from '@/lib/parse';
@@ -104,6 +106,7 @@ export function Kpi({
   title,
   delta,
   footnote,
+  icon,
 }: {
   label: string;
   value: string;
@@ -115,11 +118,24 @@ export function Kpi({
   delta?: KpiDelta | null;
   /** A standing note under the value, e.g. "Target 0.35%". */
   footnote?: string;
+  /**
+   * A decorative glyph for the tile's corner. Purely a way to tell the
+   * tiles apart at a glance in a row of six — the label is still the thing
+   * that says what the number is, so this is always aria-hidden.
+   */
+  icon?: ReactNode;
 }) {
   const shown = useCountUp(value);
   return (
     <div className="kpi" title={title}>
-      <span className="kpi-label">{label}</span>
+      <span className="kpi-head">
+        {icon ? (
+          <span className="kpi-icon" aria-hidden="true">
+            {icon}
+          </span>
+        ) : null}
+        <span className="kpi-label">{label}</span>
+      </span>
       <span className={`kpi-value tone-${tone}`}>
         {shown}
         {unit ? <small>{unit}</small> : null}

@@ -35,10 +35,12 @@
 
   /* Frosted panels. --glass-bg floats; --glass-bg-strong is for anything
      dense enough that legibility beats translucency (tables, inputs). */
-  --glass-bg: rgba(255, 255, 255, 0.55);
-  --glass-bg-strong: rgba(255, 255, 255, 0.8);
-  --glass-border: rgba(255, 255, 255, 0.6);
-  --glass-blur: 16px;
+  --glass-bg: rgba(255, 255, 255, 0.5);
+  --glass-bg-strong: rgba(255, 255, 255, 0.78);
+  /* Light mode can't use a white hairline on white, so the border carries
+     the separation as a faint ink line instead. */
+  --glass-border: rgba(15, 23, 42, 0.1);
+  --glass-blur: 22px;
   --glass-shadow: 0 8px 32px rgba(15, 23, 42, 0.1);
   --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.5);
 
@@ -65,18 +67,20 @@
   :root:not([data-theme='light']) {
     color-scheme: dark;
 
-    --bg: #0b1220;
-    --surface: #141f2d;
-    --surface-2: #1a2635;
-    --surface-3: #182534;
-    --border: #24344a;
-    --border-strong: #33465f;
+    /* Near-black, so the warm bloom behind the panels is the only colour
+       in the room and the glass has something to pick up. */
+    --bg: #0a0a0c;
+    --surface: #16171b;
+    --surface-2: #1d1f24;
+    --surface-3: #1a1c21;
+    --border: #2b2e36;
+    --border-strong: #3c404a;
 
-    --text: #e9eff7;
-    --text-2: #a9bacd;
-    --muted: #8296ad;
+    --text: #f3f4f7;
+    --text-2: #b6bac4;
+    --muted: #a0a6b2;
 
-    --brand: #4f9bec;
+    --brand: #6aabf0;
     --brand-ink: #7ab6f4;
     --brand-soft: #16293f;
 
@@ -88,21 +92,28 @@
     --bad-soft: #331c1c;
     --warn-soft: #322614;
 
-    --glass-bg: rgba(20, 31, 45, 0.55);
-    --glass-bg-strong: rgba(20, 31, 45, 0.8);
-    --glass-border: rgba(255, 255, 255, 0.08);
-    --glass-blur: 16px;
-    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
-    --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    /* A DARK veil, deliberately: a panel knocks the bloom behind it back
+       rather than amplifying it, so the bloom is brightest in the gaps
+       BETWEEN panels. That is both how the reference reads and what keeps
+       text on a predictable background — a white veil over the hottest part
+       of the bloom dropped muted text to 2.6:1. The hairline border is what
+       separates one panel from the next once the fills are this faint. */
+    --glass-bg: rgba(14, 14, 17, 0.55);
+    --glass-bg-strong: rgba(14, 14, 17, 0.72);
+    --glass-border: rgba(255, 255, 255, 0.13);
+    --glass-blur: 22px;
+    --glass-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.07);
 
-    --mesh-1: rgba(29, 111, 208, 0.22);
-    --mesh-2: rgba(15, 155, 142, 0.15);
-    --mesh-3: rgba(124, 92, 222, 0.18);
+    /* Warm, smoky, low-saturation — a lit room, not an orange gradient. */
+    --mesh-1: rgba(222, 104, 46, 0.42);
+    --mesh-2: rgba(166, 44, 34, 0.38);
+    --mesh-3: rgba(104, 68, 140, 0.26);
 
     --viz-collected: #4ade80;
     --viz-notcollected: #e66767;
-    --viz-awaiting: #3d4f63;
-    --viz-grid: #22334a;
+    --viz-awaiting: #4b505c;
+    --viz-grid: #2b2e36;
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-md: 0 2px 12px rgba(0, 0, 0, 0.45);
@@ -113,18 +124,20 @@
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  --bg: #0b1220;
-  --surface: #141f2d;
-  --surface-2: #1a2635;
-  --surface-3: #182534;
-  --border: #24344a;
-  --border-strong: #33465f;
+  /* Near-black, so the warm bloom behind the panels is the only colour
+     in the room and the glass has something to pick up. */
+  --bg: #0a0a0c;
+  --surface: #16171b;
+  --surface-2: #1d1f24;
+  --surface-3: #1a1c21;
+  --border: #2b2e36;
+  --border-strong: #3c404a;
 
-  --text: #e9eff7;
-  --text-2: #a9bacd;
-  --muted: #8296ad;
+  --text: #f3f4f7;
+  --text-2: #b6bac4;
+  --muted: #a0a6b2;
 
-  --brand: #4f9bec;
+  --brand: #6aabf0;
   --brand-ink: #7ab6f4;
   --brand-soft: #16293f;
 
@@ -136,21 +149,28 @@
   --bad-soft: #331c1c;
   --warn-soft: #322614;
 
-  --glass-bg: rgba(20, 31, 45, 0.55);
-  --glass-bg-strong: rgba(20, 31, 45, 0.8);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-blur: 16px;
-  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
-  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  /* A DARK veil, deliberately: a panel knocks the bloom behind it back
+     rather than amplifying it, so the bloom is brightest in the gaps
+     BETWEEN panels. That is both how the reference reads and what keeps
+     text on a predictable background — a white veil over the hottest part
+     of the bloom dropped muted text to 2.6:1. The hairline border is what
+     separates one panel from the next once the fills are this faint. */
+  --glass-bg: rgba(14, 14, 17, 0.55);
+  --glass-bg-strong: rgba(14, 14, 17, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.13);
+  --glass-blur: 22px;
+  --glass-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.07);
 
-  --mesh-1: rgba(29, 111, 208, 0.22);
-  --mesh-2: rgba(15, 155, 142, 0.15);
-  --mesh-3: rgba(124, 92, 222, 0.18);
+  /* Warm, smoky, low-saturation — a lit room, not an orange gradient. */
+  --mesh-1: rgba(222, 104, 46, 0.42);
+  --mesh-2: rgba(166, 44, 34, 0.38);
+  --mesh-3: rgba(104, 68, 140, 0.26);
 
   --viz-collected: #4ade80;
   --viz-notcollected: #e66767;
-  --viz-awaiting: #3d4f63;
-  --viz-grid: #22334a;
+  --viz-awaiting: #4b505c;
+  --viz-grid: #2b2e36;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 2px 12px rgba(0, 0, 0, 0.45);
@@ -167,8 +187,21 @@ body {
   padding: 0;
 }
 
-body {
+/*
+ * The base colour lives on <html>, NOT on <body>.
+ *
+ * body::before and body::after below are the bloom and the watermark, both
+ * at z-index: -1. A negative-z pseudo-element paints behind its own
+ * parent's background, so an opaque background on <body> hides both of
+ * them completely — which is exactly what happened when they were first
+ * added. Putting the colour one level up leaves body transparent, so the
+ * two layers sit between it and the base colour where they belong.
+ */
+html {
   background: var(--bg);
+}
+
+body {
   color: var(--text);
   font: 400 14px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
     sans-serif;
@@ -186,11 +219,54 @@ body::before {
   inset: -15vmax;
   z-index: -1;
   pointer-events: none;
+  /*
+   * Positions are percentages of this box, which is inset past the viewport
+   * on every side — so they are pulled well inside the edges to keep all
+   * four blobs on screen rather than half of each hanging off it.
+   */
   background:
-    radial-gradient(42% 40% at 18% 14%, var(--mesh-1), transparent 72%),
-    radial-gradient(38% 36% at 82% 18%, var(--mesh-2), transparent 72%),
-    radial-gradient(45% 42% at 52% 92%, var(--mesh-3), transparent 72%);
-  filter: blur(50px);
+    radial-gradient(50% 45% at 22% 20%, var(--mesh-2), transparent 70%),
+    radial-gradient(46% 42% at 78% 24%, var(--mesh-1), transparent 70%),
+    radial-gradient(54% 48% at 66% 76%, var(--mesh-1), transparent 72%),
+    radial-gradient(44% 40% at 28% 72%, var(--mesh-3), transparent 72%);
+  filter: blur(60px);
+}
+
+/*
+ * The Justlife mark and wordmark, washed out behind everything, in mono.
+ *
+ * The source PNG is the brand's cyan logo on a transparent background, so
+ * it only needs desaturating. `brightness` then pushes the resulting mid
+ * grey to the end of the scale the theme needs — up to near-white on the
+ * dark background, down to near-black on the light one — because grayscale
+ * alone leaves cyan at a mid grey that reads as neither.
+ *
+ * Decorative only: the real wordmark is in the top bar, as text.
+ */
+body::after {
+  content: '';
+  position: fixed;
+  right: max(3vw, 24px);
+  bottom: max(4vh, 28px);
+  width: min(42vw, 520px);
+  aspect-ratio: 1 / 1;
+  z-index: -1;
+  pointer-events: none;
+  background: url('/justlife-logo.png') no-repeat center / contain;
+  filter: grayscale(1) brightness(0.3);
+  opacity: 0.1;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) body::after {
+    filter: grayscale(1) brightness(2.4);
+    opacity: 0.08;
+  }
+}
+
+:root[data-theme='dark'] body::after {
+  filter: grayscale(1) brightness(2.4);
+  opacity: 0.08;
 }
 
 button,
@@ -2075,7 +2151,8 @@ textarea {
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  body::before {
+  body::before,
+  body::after {
     display: none;
   }
   .glass,
@@ -2667,4 +2744,70 @@ textarea {
   .table-card tbody tr.month-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* ==========================================================================
+   KPI icon chips
+   A glyph in a hairline rounded square, so a row of six tiles can be told
+   apart at a glance. Decorative: the label still says what the number is.
+   ========================================================================== */
+
+.kpi-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.kpi-icon {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  background: var(--glass-bg-strong);
+  color: var(--text-2);
+}
+
+.kpi-head .kpi-label {
+  /* Two short lines beside the chip rather than one long one running past it. */
+  min-width: 0;
+}
+
+/* ==========================================================================
+   Panel polish
+   With the fills this faint, the hairline border and the inner highlight
+   are what give a panel its edge — so they are turned up a little on the
+   surfaces that nest inside another panel and would otherwise disappear.
+   ========================================================================== */
+
+.summary-tile,
+.ageing-bucket,
+.kpi-icon,
+.history-panel {
+  box-shadow: var(--glass-highlight);
+}
+
+/* Tables sit directly on a card, so their header needs its own edge. */
+thead th {
+  border-bottom: 1px solid var(--glass-border);
+}
+
+tbody td {
+  border-bottom: 1px solid var(--glass-border);
+}
+
+/* The segmented toggles and company tabs read as one control with internal
+   dividers, like the reference's nav, rather than as loose buttons. */
+.seg-toggle,
+.company-tabs {
+  border-radius: 999px;
+}
+
+.cp-card-head,
+.chart-head,
+.progress-head,
+.ageing-head {
+  letter-spacing: -0.01em;
 }

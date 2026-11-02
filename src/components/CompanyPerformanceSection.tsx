@@ -40,7 +40,14 @@ import {
 import { downloadCsv, toCsv } from '@/lib/csv';
 import { Kpi, type KpiDelta } from '@/components/ui';
 import DayBarChart, { type DayDatum } from '@/components/DayBarChart';
-import { DownloadIcon } from '@/components/icons';
+import {
+  BanIcon,
+  ClockIcon,
+  DownloadIcon,
+  PercentIcon,
+  StarIcon,
+  UserMinusIcon,
+} from '@/components/icons';
 
 function pctLabel(pct: number | null): string {
   return pct != null ? `${pct.toFixed(2)}%` : '—';
@@ -687,11 +694,13 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
         {kpis ? (
           <div className="kpi-row">
             <Kpi
+              icon={<UserMinusIcon size={17} />}
               label="Absent BD"
               value={numLabel(kpis.absentCount)}
               delta={delta(kpis.absentCount, previousKpis?.absentCount, true, undefined, 1)}
             />
             <Kpi
+              icon={<PercentIcon size={17} />}
               label="Absent BD %"
               value={pctLabel(kpis.absentPct)}
               unit={kpis.absentPct == null ? 'not set in sheet' : undefined}
@@ -700,12 +709,14 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
               delta={delta(kpis.absentPct, previousKpis?.absentPct, true, 'pts', 2)}
             />
             <Kpi
+              icon={<BanIcon size={17} />}
               label="Total cancellations"
               value={numLabel(kpis.cancellationCount)}
               unit={kpis.cancellationCount == null ? 'not set in sheet' : undefined}
               delta={delta(kpis.cancellationCount, previousKpis?.cancellationCount, true)}
             />
             <Kpi
+              icon={<PercentIcon size={17} />}
               label="Cancellation %"
               value={pctLabel(kpis.cancellationPct)}
               unit={kpis.cancellationPct == null ? 'not set in sheet' : undefined}
@@ -714,6 +725,7 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
               delta={delta(kpis.cancellationPct, previousKpis?.cancellationPct, true, 'pts', 2)}
             />
             <Kpi
+              icon={<ClockIcon size={17} />}
               label="On Time %"
               value={companyOnTimeKpi ? `${companyOnTimeKpi.pct.toFixed(2)}%` : 'Not tracked'}
               unit={
@@ -739,6 +751,7 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
               }
             />
             <Kpi
+              icon={<StarIcon size={17} />}
               label="Avg rating"
               value={kpis.avgRating != null ? kpis.avgRating.toFixed(2) : '—'}
               unit={kpis.avgRating == null ? 'not set in sheet' : '★'}

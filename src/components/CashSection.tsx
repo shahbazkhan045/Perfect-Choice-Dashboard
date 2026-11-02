@@ -27,7 +27,16 @@ import {
 } from '@/components/ui';
 import DayBarChart, { type DayDatum } from '@/components/DayBarChart';
 import type { SectionProps } from '@/components/Dashboard';
-import { DownloadIcon, MailIcon } from '@/components/icons';
+import {
+  AlertIcon,
+  CheckIcon,
+  DownloadIcon,
+  HourglassIcon,
+  MailIcon,
+  NoteIcon,
+  TicketIcon,
+  WalletIcon,
+} from '@/components/icons';
 
 const FILTER_TITLES: Record<FilterKey, string> = {
   yesterday: 'Yesterday',
@@ -223,6 +232,7 @@ export default function CashSection({
       {isFinanceTab ? (
         <div className="kpi-row kpi-row-4">
           <Kpi
+            icon={<NoteIcon size={17} />}
             label="Awaiting Perfect Choice response"
             value={String(financeRows.length)}
             unit="rows"
@@ -238,16 +248,32 @@ export default function CashSection({
           ) : null}
 
           <div className="kpi-row">
-            <Kpi label={`Total cash · ${scope}`} value={money(kpis.total)} />
-            <Kpi label="Confirmed collected" value={money(kpis.collected)} tone="good" />
-            <Kpi label="Not collected" value={money(kpis.notCollected)} tone="bad" />
             <Kpi
+              icon={<WalletIcon size={17} />}
+              label={`Total cash · ${scope}`}
+              value={money(kpis.total)}
+            />
+            <Kpi
+              icon={<CheckIcon size={17} />}
+              label="Confirmed collected"
+              value={money(kpis.collected)}
+              tone="good"
+            />
+            <Kpi
+              icon={<AlertIcon size={17} />}
+              label="Not collected"
+              value={money(kpis.notCollected)}
+              tone="bad"
+            />
+            <Kpi
+              icon={<HourglassIcon size={17} />}
               label="Pending confirmation"
               value={String(kpis.pendingCount)}
               unit="entries"
               tone="warn"
             />
             <Kpi
+              icon={<TicketIcon size={17} />}
               label="No ticket raised"
               value={String(kpis.noTicketCount)}
               unit="entries"
