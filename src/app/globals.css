@@ -2167,3 +2167,220 @@ textarea {
   place-items: center;
   color: var(--brand);
 }
+
+/* ==========================================================================
+   KPI deltas & targets
+   The small line under a KPI value: how it moved since the previous period,
+   coloured by whether that move was in the good direction for THAT metric
+   (fewer absences is good; a lower rating is not), plus a standing
+   "Target 0.35%" note where the team has one.
+   ========================================================================== */
+
+.kpi-delta,
+.kpi-footnote {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  margin-top: -2px;
+}
+
+.kpi-footnote {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.kpi-delta-good {
+  color: var(--good);
+}
+
+.kpi-delta-bad {
+  color: var(--bad);
+}
+
+.kpi-delta-flat {
+  color: var(--muted);
+}
+
+/* A cleaner's or van's shortened name, with the full one in the tooltip. */
+.name-main {
+  display: block;
+}
+
+.name-sub {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+/* "Repeat" — the same cleaner or van was over threshold last month too. */
+.tag-repeat {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--bad);
+  background: var(--bad-soft);
+  border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent);
+  vertical-align: 1px;
+}
+
+/* ==========================================================================
+   "Updating as" chip
+   Replaces the full name banner once a name has been saved — the prompt has
+   been answered, so it shrinks to a statement of fact you can click to edit.
+   ========================================================================== */
+
+.actor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+  padding: 5px 11px;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: var(--glass-bg-strong);
+  color: var(--text-2);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.actor-chip b {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.actor-chip:hover {
+  border-color: var(--brand);
+  color: var(--text);
+}
+
+.actor-chip svg {
+  flex: none;
+  color: var(--muted);
+}
+
+/* ==========================================================================
+   Scrolling tables
+   Giving the scroll container a height is what makes `position: sticky` on
+   thead actually do something: without it the header scrolls away with the
+   page. (overflow-x: auto already promotes overflow-y to auto, so no second
+   declaration is needed.)
+   ========================================================================== */
+
+.table-scroll {
+  max-height: min(68vh, 760px);
+}
+
+/* ==========================================================================
+   Phone
+   ========================================================================== */
+
+@media (max-width: 640px) {
+  /* The three top tabs scroll sideways rather than wrapping onto two rows. */
+  .sections {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .sections::-webkit-scrollbar {
+    display: none;
+  }
+  .section-tab {
+    flex: none;
+    scroll-margin-inline: 14px;
+  }
+
+  /* Two KPIs across; an odd last one takes the full width rather than
+     leaving a conspicuous gap beside it. */
+  .kpi-row,
+  .kpi-row-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .kpi-row > .kpi:last-child:nth-child(odd),
+  .kpi-row-4 > .kpi:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  /* Toolbar actions become a two-up grid; the one destructive-feeling
+     action (sending mail to the partner) gets its own full-width row. */
+  .toolbar-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+  .toolbar-actions .btn {
+    justify-content: center;
+    width: 100%;
+  }
+  .toolbar-actions .btn-primary {
+    grid-column: 1 / -1;
+  }
+
+  /* The role chip is hidden at 780px for space; on a phone knowing whether
+     you can edit at all matters more than the saved pixels. */
+  .role-chip {
+    display: inline-block;
+    font-size: 10.5px;
+    padding: 3px 8px;
+  }
+
+  /* A phone has no room for a 420px window inside an already short page. */
+  .table-scroll,
+  .cp-defaulters-scroll {
+    max-height: none;
+  }
+
+  .actor-chip {
+    max-width: 150px;
+  }
+  .actor-chip-label {
+    display: none;
+  }
+
+  /* Nothing in the top bar or the defaulter toolbar fits on one phone row,
+     and a page that scrolls sideways hides half of itself. Both wrap
+     instead, and the controls that need the room take a full row. */
+  .topbar-right {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 6px;
+    max-width: 100%;
+  }
+  .sync {
+    font-size: 11px;
+  }
+  .cp-card-head,
+  .cp-filters {
+    flex-wrap: wrap;
+    row-gap: 10px;
+  }
+  .cp-defaulter-controls {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .cp-defaulter-controls .seg-toggle,
+  .cp-defaulter-controls select,
+  .cp-defaulter-controls .btn {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  /* "Rank by Absent BD / Cancellations / Late arrivals" is wider than a
+     phone on its own, so the pills wrap onto a second line. */
+  .seg-toggle {
+    flex-wrap: wrap;
+  }
+  .seg-toggle-btn {
+    flex: 1 1 auto;
+  }
+}

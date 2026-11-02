@@ -1,4 +1,5 @@
 import { daysBetween, shiftIso } from './parse';
+import { ABSENT_MONTH_FLAG, ABSENT_WEEK_FLAG, CANX_MONTH_FLAG } from './targets';
 import type {
   AnyRow,
   CanxRow,
@@ -680,7 +681,7 @@ export function defaultersListForMonth(
 // both oldest first, ending at whatever period is currently selected.
 // ---------------------------------------------------------------------------
 
-function shiftMonth(month: string, delta: number): string {
+export function shiftMonth(month: string, delta: number): string {
   const [y, m] = month.split('-').map(Number);
   const d = new Date(Date.UTC(y, m - 1 + delta, 1));
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
@@ -1107,4 +1108,64 @@ export function reminderStats(cash: CashRow[], canx: CanxRow[], today: string): 
 export function ageInDays(row: AnyRow, today: string): number {
   if (!row.date || isAnswered(row)) return 0;
   return Math.max(0, daysBetween(row.date, today));
+}
+
+// ---------------------------------------------------------------------------
+// Defaulter thresholds
+//
+// Which rows get flagged, and which of those are REPEAT offenders — the same
+// cleaner or van having been over threshold the month before as well. The
+// thresholds themselves live in lib/targets.ts so there is one place to
+// change them; these only decide whether a row crosses them.
+// ---------------------------------------------------------------------------
+
+export interface ThresholdFlags {
+  absent: boolean;
+  cancellations: boolean;
+  onTime: boolean;
+  /** True when any of the three is over — i.e. the row is worth looking at. */
+  any: boolean;
+}
+
+export function thresholdFlags(
+  entry: { absentCount: number; cancellationCount: number; onTimePct: number | null },
+  period: 'monthly' | 'weekly',
+): ThresholdFlags {
+  const absent =
+    entry.absentCount >= (period === 'weekly' ? ABSENT_WEEK_FLAG : ABSENT_MONTH_FLAG);
+  // Cancellations are only given a monthly threshold; a week is too short a
+  // window for the count to mean much on its own.
+  const cancellations = period === 'monthly' && entry.cancellationCount >= CANX_MONTH_FLAG;
+  const onTime = entry.onTimePct != null && entry.onTimePct < ON_TIME_WARN_PCT;
+  return { absent, cancellations, onTime, any: absent || cancellations || onTime };
+}
+
+/**
+ * The keys that were ALREADY over threshold in the month before `month` —
+ * what the "Repeat" tag is driven by. Built from a single pass of the
+ * previous month through the very same defaultersList the table itself
+ * uses, so the tag can never disagree with the numbers underneath it.
+ * Asking per row instead would rescan every source array once per cleaner,
+ * which at ~965 cleaners is millions of comparisons for the same answer.
+ */
+export function repeatOffenders(
+  perf: CompanyPerfRow[],
+  canx: CanxRow[],
+  month: string,
+  groupBy: DefaulterGroupBy,
+  onTime: OnTimeData = NO_ONTIME,
+): Set<string> {
+  const out = new Set<string>();
+  if (!month) return out;
+  const previous = shiftMonth(month, -1);
+  for (const e of defaultersListForMonth(perf, canx, previous, groupBy, 'absent', onTime)) {
+    if (thresholdFlags(e, 'monthly').any) out.add(e.key);
+  }
+  return out;
+}
+
+/** "Oct" — for the compact "vs Oct" comparison line under a KPI. */
+export function shortMonthLabel(monthKey: string): string {
+  const m = Number(monthKey.split('-')[1]);
+  return SHORT_MONTHS[m - 1] ?? monthKey;
 }

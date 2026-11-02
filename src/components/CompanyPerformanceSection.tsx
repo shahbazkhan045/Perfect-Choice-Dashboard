@@ -9,6 +9,10 @@ import {
   companyKpis,
   companyMonthOptions,
   companyOnTime,
+  repeatOffenders,
+  shiftMonth,
+  shortMonthLabel,
+  thresholdFlags,
   defaultersList,
   defaultersListForMonth,
   distinctCleanerNames,
@@ -23,9 +27,17 @@ import {
   type DefaulterMetric,
   type OnTimeData,
 } from '@/lib/stats';
-import { formatDmy } from '@/lib/parse';
+import { formatDmy, shortCleanerName, shortVanName } from '@/lib/parse';
+import {
+  ABSENT_BD_PCT_TARGET,
+  CANX_PCT_TARGET,
+  ON_TIME_PCT_TARGET,
+  RATING_TARGET,
+  targetLabel,
+  targetTone,
+} from '@/lib/targets';
 import { downloadCsv, toCsv } from '@/lib/csv';
-import { Kpi } from '@/components/ui';
+import { Kpi, type KpiDelta } from '@/components/ui';
 import { DownloadIcon } from '@/components/icons';
 
 function pctLabel(pct: number | null): string {
@@ -43,6 +55,29 @@ function numLabel(n: number | null): string {
  */
 const UNKNOWN_ON_TIME = "On time is only measured for exclusive bookings, and only for months the sheet's MTD table covers.";
 
+/** targetTone() speaks in statuses; the Kpi tile speaks in tones. */
+function toneFor(value: number | null, target: number, higherIsBetter: boolean) {
+  return targetTone(value, target, higherIsBetter) ?? 'plain';
+}
+
+/**
+ * A cleaner or van cell: the shortened name, the full one in the tooltip.
+ * Downloads keep the full name — see downloadDefaulters() and download().
+ */
+function NameCell({ full, kind }: { full: string; kind: 'cleaner' | 'van' }) {
+  if (!full) return <span className="muted">—</span>;
+  if (kind === 'van') {
+    return <span title={full}>{shortVanName(full)}</span>;
+  }
+  const { name, van } = shortCleanerName(full);
+  return (
+    <span title={full}>
+      <span className="name-main">{name}</span>
+      {van ? <span className="name-sub">{van}</span> : null}
+    </span>
+  );
+}
+
 function OnTimeCell({ pct }: { pct: number | null }) {
   if (pct == null) {
     return (
@@ -53,6 +88,9 @@ function OnTimeCell({ pct }: { pct: number | null }) {
   }
   return <td className={`num${pct < ON_TIME_WARN_PCT ? ' cell-warn' : ''}`}>{pct.toFixed(2)}%</td>;
 }
+
+/** Which company this browser last looked at — a convenience, never required. */
+const COMPANY_KEY = 'pcd-company';
 
 type DefaulterView = 'monthly' | 'weekly';
 type CpView = 'overview' | 'rawdata';
@@ -97,6 +135,39 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
     if (!weekKey && weeks.length) setWeekKey(weeks[0].key);
   }, [weekKey, weeks]);
 
+  // Remember which company this browser was last looking at, so the tab
+  // opens where you left it rather than on whichever one sorts first.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(COMPANY_KEY);
+      if (saved) setSelectedCompany(saved);
+    } catch {
+      /* storage can be blocked; the auto-select below still picks one */
+    }
+  }, []);
+
+  function chooseCompany(company: string) {
+    setSelectedCompany(company);
+    try {
+      localStorage.setItem(COMPANY_KEY, company);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Land on a company that actually has numbers for the selected month —
+  // "select a company above" on first open, or a remembered company that
+  // happens to be blank this month, is a dead end.
+  useEffect(() => {
+    if (!month || !companies.length) return;
+    const hasData = (c: string) =>
+      data.companyMonthly.some((m) => m.company === c && m.month === month) ||
+      data.companyPerf.some((r) => r.company === c && r.date.slice(0, 7) === month);
+    if (selectedCompany && hasData(selectedCompany)) return;
+    const next = companies.find(hasData) ?? companies[0];
+    if (next && next !== selectedCompany) setSelectedCompany(next);
+  }, [month, companies, selectedCompany, data.companyMonthly, data.companyPerf]);
+
   const kpis = useMemo(
     () => (selectedCompany ? companyKpis(data.companyMonthly, selectedCompany, month) : null),
     [data.companyMonthly, selectedCompany, month],
@@ -117,6 +188,42 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
     () => (selectedCompany ? companyOnTime(data.onTimeVanDaily, selectedCompany, month) : null),
     [data.onTimeVanDaily, selectedCompany, month],
   );
+
+  // Every KPI below is also shown as a move since the month before, which
+  // is read from exactly the same sources as the current month's figure.
+  const previousMonth = month ? shiftMonth(month, -1) : '';
+  const previousKpis = useMemo(
+    () =>
+      selectedCompany && previousMonth
+        ? companyKpis(data.companyMonthly, selectedCompany, previousMonth)
+        : null,
+    [data.companyMonthly, selectedCompany, previousMonth],
+  );
+  const previousOnTime = useMemo(
+    () =>
+      selectedCompany && previousMonth
+        ? companyOnTime(data.onTimeVanDaily, selectedCompany, previousMonth)
+        : null,
+    [data.onTimeVanDaily, selectedCompany, previousMonth],
+  );
+
+  /** null whenever either side is missing — an absent month is not a change of zero. */
+  function delta(
+    now: number | null | undefined,
+    before: number | null | undefined,
+    lowerIsBetter: boolean,
+    suffix?: string,
+    decimals = 0,
+  ): KpiDelta | null {
+    if (now == null || before == null || !previousMonth) return null;
+    return {
+      change: now - before,
+      vs: shortMonthLabel(previousMonth),
+      lowerIsBetter,
+      suffix,
+      decimals,
+    };
+  }
 
   const selectedWeek = weeks.find((w) => w.key === weekKey);
 
@@ -154,6 +261,16 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
   useEffect(() => {
     setExpandedKey(null);
   }, [defaulterView, defaulterGroupBy]);
+
+  // Who was over threshold last month too. Weekly has no "previous month"
+  // to compare against, so the tag only appears on the Monthly tab.
+  const repeats = useMemo(
+    () =>
+      defaulterView === 'monthly' && month
+        ? repeatOffenders(data.companyPerf, data.canx, month, defaulterGroupBy, onTime)
+        : new Set<string>(),
+    [defaulterView, month, data.companyPerf, data.canx, defaulterGroupBy, onTime],
+  );
 
   const expandedEntry = defaulters.find((d) => d.key === expandedKey);
 
@@ -436,10 +553,12 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
                 rollup.map((r) => (
                   <tr key={`${r.cleanerId || r.cleanerName}`}>
                     <td className="mono">{r.cleanerId || <span className="muted">—</span>}</td>
-                    <td className="strong">{r.cleanerName}</td>
+                    <td className="strong">
+                      <NameCell full={r.cleanerName} kind="cleaner" />
+                    </td>
                     <td>{r.company || <span className="muted">—</span>}</td>
-                    <td className="van" title={r.van}>
-                      {r.van || <span className="muted">—</span>}
+                    <td className="van">
+                      <NameCell full={r.van} kind="van" />
                     </td>
                     <td className="num">{r.absentCount}</td>
                     <td className="num">{r.absentShare.toFixed(2)}%</td>
@@ -472,7 +591,7 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
               role="tab"
               aria-selected={selectedCompany === c}
               className={`company-tab${selectedCompany === c ? ' is-active' : ''}`}
-              onClick={() => setSelectedCompany(c)}
+              onClick={() => chooseCompany(c)}
             >
               {c}
             </button>
@@ -481,23 +600,32 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
 
         {kpis ? (
           <div className="kpi-row">
-            <Kpi label="Absent BD" value={numLabel(kpis.absentCount)} />
+            <Kpi
+              label="Absent BD"
+              value={numLabel(kpis.absentCount)}
+              delta={delta(kpis.absentCount, previousKpis?.absentCount, true, undefined, 1)}
+            />
             <Kpi
               label="Absent BD %"
               value={pctLabel(kpis.absentPct)}
               unit={kpis.absentPct == null ? 'not set in sheet' : undefined}
-              tone={kpis.absentPct != null ? 'warn' : 'plain'}
+              tone={toneFor(kpis.absentPct, ABSENT_BD_PCT_TARGET, false)}
+              footnote={targetLabel(ABSENT_BD_PCT_TARGET)}
+              delta={delta(kpis.absentPct, previousKpis?.absentPct, true, 'pts', 2)}
             />
             <Kpi
               label="Total cancellations"
               value={numLabel(kpis.cancellationCount)}
               unit={kpis.cancellationCount == null ? 'not set in sheet' : undefined}
+              delta={delta(kpis.cancellationCount, previousKpis?.cancellationCount, true)}
             />
             <Kpi
               label="Cancellation %"
               value={pctLabel(kpis.cancellationPct)}
               unit={kpis.cancellationPct == null ? 'not set in sheet' : undefined}
-              tone={kpis.cancellationPct != null ? 'warn' : 'plain'}
+              tone={toneFor(kpis.cancellationPct, CANX_PCT_TARGET, false)}
+              footnote={targetLabel(CANX_PCT_TARGET)}
+              delta={delta(kpis.cancellationPct, previousKpis?.cancellationPct, true, 'pts', 2)}
             />
             <Kpi
               label="On Time %"
@@ -508,12 +636,16 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
                   : undefined
               }
               tone={
-                companyOnTimeKpi
-                  ? companyOnTimeKpi.pct < ON_TIME_WARN_PCT
-                    ? 'warn'
-                    : 'good'
-                  : 'plain'
+                companyOnTimeKpi ? toneFor(companyOnTimeKpi.pct, ON_TIME_PCT_TARGET, true) : 'plain'
               }
+              footnote={companyOnTimeKpi ? targetLabel(ON_TIME_PCT_TARGET) : undefined}
+              delta={delta(
+                companyOnTimeKpi?.pct ?? null,
+                previousOnTime?.pct ?? null,
+                false,
+                'pts',
+                2,
+              )}
               title={
                 companyOnTimeKpi
                   ? undefined
@@ -524,7 +656,9 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
               label="Avg rating"
               value={kpis.avgRating != null ? kpis.avgRating.toFixed(2) : '—'}
               unit={kpis.avgRating == null ? 'not set in sheet' : '★'}
-              tone={kpis.avgRating != null ? 'good' : 'plain'}
+              tone={toneFor(kpis.avgRating, RATING_TARGET, true)}
+              footnote={kpis.avgRating != null ? targetLabel(RATING_TARGET, '') : undefined}
+              delta={delta(kpis.avgRating, previousKpis?.avgRating, false, undefined, 2)}
             />
           </div>
         ) : (
@@ -653,6 +787,7 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
               <tbody>
                 {defaulters.map((d, i) => {
                   const expanded = d.key === expandedKey;
+                  const flags = thresholdFlags(d, defaulterView);
                   return (
                     <Fragment key={d.key}>
                       <tr
@@ -671,18 +806,35 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
                       >
                         <td className="muted">{i + 1}</td>
                         <td className="strong">
-                          {d.name}
+                          <NameCell
+                            full={d.name}
+                            kind={defaulterGroupBy === 'cleaner' ? 'cleaner' : 'van'}
+                          />
+                          {repeats.has(d.key) ? (
+                            <span
+                              className="tag-repeat"
+                              title="Was over threshold last month too."
+                            >
+                              Repeat
+                            </span>
+                          ) : null}
                           <span className="month-arrow" aria-hidden="true">
                             {expanded ? '▾' : '▸'}
                           </span>
                         </td>
-                        <td className="van" title={d.secondary}>
-                          {d.secondary || <span className="muted">—</span>}
+                        <td className="van">
+                          {defaulterGroupBy === 'cleaner' ? (
+                            <NameCell full={d.secondary} kind="van" />
+                          ) : (
+                            <span title={d.secondary}>
+                              {d.secondary || <span className="muted">—</span>}
+                            </span>
+                          )}
                         </td>
-                        <td className={`num${d.absentCount > 3 ? ' cell-warn' : ''}`}>
+                        <td className={`num${flags.absent ? ' cell-warn' : ''}`}>
                           {d.absentCount || <span className="muted">0</span>}
                         </td>
-                        <td className={`num${d.cancellationCount > 2 ? ' cell-warn' : ''}`}>
+                        <td className={`num${flags.cancellations ? ' cell-warn' : ''}`}>
                           {d.cancellationCount || <span className="muted">0</span>}
                         </td>
                         <td className="num">{d.lateCount || <span className="muted">0</span>}</td>
@@ -740,7 +892,9 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
                                           key={c.cleanerId || c.cleanerName}
                                           className={ci === 0 ? 'history-current' : undefined}
                                         >
-                                          <td>{c.cleanerName}</td>
+                                          <td>
+                                            <NameCell full={c.cleanerName} kind="cleaner" />
+                                          </td>
                                           <td className={`num${ci === 0 ? ' cell-warn' : ''}`}>{c.absentCount}</td>
                                           <td className={`num${ci === 0 ? ' cell-warn' : ''}`}>
                                             {c.cancellationCount}

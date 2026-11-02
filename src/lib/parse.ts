@@ -176,3 +176,59 @@ export function daysBetween(fromIso: string, toIsoStr: string): number {
   const [ty, tm, td] = toIsoStr.split('-').map(Number);
   return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86400000);
 }
+
+// ---------------------------------------------------------------------------
+// Short display names
+//
+// Van and cleaner names in the sheet carry the whole routing history —
+// "Excl Justlife FF PC HC23 [Hub] Dubai - JVC 2" is one column of a table
+// that has eight. These shorten them for display ONLY: the full name stays
+// in the row's title attribute and in every CSV download, and is still what
+// every lookup and filter matches on. Anything that doesn't fit the pattern
+// comes back unchanged rather than mangled.
+// ---------------------------------------------------------------------------
+
+/**
+ * "Excl Justlife FF PC HC23 [Hub] Dubai - JVC 2" -> "HC23 · JVC 2".
+ *
+ * The van code (HC + digits) and the area after the last " - " are the two
+ * parts that actually tell vans apart; the prefix is the same on nearly all
+ * of them. Returns the original when there's no van code to anchor on.
+ */
+export function shortVanName(full: string): string {
+  const name = String(full ?? '').trim();
+  const code = name.match(/\bHC\s*(\d+)\b/i);
+  if (!code) return name;
+
+  // Everything after the last " - " is the area, minus any trailing
+  // "<Temp>"-style marker and the bracketed hub tag.
+  const afterDash = name.split(/\s+-\s+/).slice(1).join(' - ');
+  const area = afterDash
+    .replace(/\[[^\]]*\]/g, '')
+    .replace(/<[^>]*>/g, '')
+    .trim();
+
+  const short = `HC${code[1]}`;
+  return area ? `${short} · ${area}` : short;
+}
+
+/**
+ * "Riza G M - Excl Justlife DTC PC HC23" -> { name: "Riza G M", van: "HC23" }.
+ *
+ * Cleaner names are the person's name followed by their van, joined either
+ * by " - " or just by a space before the "Excl …" prefix. The van code is
+ * returned separately so the table can show it as a secondary line.
+ * `name` is the original string whenever the van part can't be found.
+ */
+export function shortCleanerName(full: string): { name: string; van: string } {
+  const value = String(full ?? '').trim();
+  const code = value.match(/\bHC\s*(\d+)\b/i);
+  const van = code ? `HC${code[1]}` : '';
+
+  // Cut at whichever marker starts the van part — " - " when there is one,
+  // otherwise the "Excl"/"Justlife" prefix the van names all begin with.
+  const cut = value.search(/\s+-\s+|\s+(?=(Excl|Justlife)\b)/i);
+  const name = cut > 0 ? value.slice(0, cut).trim() : value;
+
+  return { name: name || value, van };
+}

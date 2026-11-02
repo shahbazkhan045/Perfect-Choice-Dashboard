@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AnyRow, CanxRow, CashRow, DashboardData, Role, Section } from '@/lib/types';
 import { type FilterKey } from '@/lib/stats';
 import { Toaster, useToast } from '@/components/ui';
@@ -8,7 +8,7 @@ import CashSection from '@/components/CashSection';
 import CanxSection from '@/components/CanxSection';
 import CompanyPerformanceSection from '@/components/CompanyPerformanceSection';
 import ReminderModal from '@/components/ReminderModal';
-import { BanIcon, BanknoteIcon, BuildingIcon, MoonIcon, SunIcon, UserIcon } from '@/components/icons';
+import { BanIcon, BanknoteIcon, BuildingIcon, MoonIcon, PencilIcon, SunIcon, UserIcon } from '@/components/icons';
 
 const NAME_KEY = 'pcd-actor-name';
 const THEME_KEY = 'pcd-theme';
@@ -61,6 +61,11 @@ export default function Dashboard({ role, roleLabel }: { role: Role; roleLabel: 
 
   const { toasts, push } = useToast();
 
+  // On a phone the three tabs scroll sideways (see the 640px block in
+  // globals.css), so the selected one is pulled into view — otherwise
+  // picking "Company performance" leaves it half off the right edge.
+  const tabsRef = useRef<HTMLElement | null>(null);
+
   const canEdit = role === 'JUSTLIFE_ADMIN' || role === 'PC_ADMIN';
   const canRemind = role === 'JUSTLIFE_ADMIN';
 
@@ -96,6 +101,17 @@ export default function Dashboard({ role, roleLabel }: { role: Role; roleLabel: 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const active = tabsRef.current?.querySelector('.section-tab.is-active');
+    if (!active) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    active.scrollIntoView({
+      inline: 'center',
+      block: 'nearest',
+      behavior: reduced ? 'auto' : 'smooth',
+    });
+  }, [section]);
 
   // ---- theme ----
   function toggleTheme() {
@@ -285,6 +301,27 @@ export default function Dashboard({ role, roleLabel }: { role: Role; roleLabel: 
               </span>
               <span className="sync-at">{data ? `Synced ${data.syncedAt}` : ''}</span>
             </div>
+            {/*
+              Once a name is saved the full banner is replaced by this chip:
+              the prompt has been answered, so it stops taking a whole row of
+              the page and becomes a small, editable statement of fact. A
+              view-only role never sees either, since it writes nothing.
+            */}
+            {canEdit && actorName ? (
+              <button
+                type="button"
+                className="actor-chip"
+                onClick={() => {
+                  const next = window.prompt('Your name', actorName);
+                  if (next !== null) saveName(next);
+                }}
+                title="Change the name your updates are signed with"
+              >
+                <span className="actor-chip-label">Updating as</span>
+                <b>{actorName}</b>
+                <PencilIcon size={13} />
+              </button>
+            ) : null}
             <span className="role-chip" title="Your access level">
               {roleLabel}
             </span>
@@ -300,7 +337,7 @@ export default function Dashboard({ role, roleLabel }: { role: Role; roleLabel: 
           </div>
         </div>
 
-        <nav className="sections" role="tablist" aria-label="Report sections">
+        <nav className="sections" role="tablist" aria-label="Report sections" ref={tabsRef}>
           <button
             type="button"
             role="tab"
@@ -396,18 +433,6 @@ export default function Dashboard({ role, roleLabel }: { role: Role; roleLabel: 
 
         <footer className="page-foot">
           <span>Justlife × Perfect Choice — daily confirmation</span>
-          {canEdit && actorName ? (
-            <button
-              type="button"
-              className="linkish"
-              onClick={() => {
-                const next = window.prompt('Your name', actorName);
-                if (next !== null) saveName(next);
-              }}
-            >
-              Updating as <b>{actorName}</b> · change
-            </button>
-          ) : null}
         </footer>
       </main>
 

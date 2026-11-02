@@ -80,12 +80,30 @@ function useCountUp(value: string): string {
   return display;
 }
 
+/**
+ * A KPI's change since the previous period. Whether the change is GOOD is a
+ * property of the metric, not of its sign — fewer absences is good, a lower
+ * rating is not — so `lowerIsBetter` is required rather than guessed.
+ */
+export interface KpiDelta {
+  /** Signed change: this period minus the one before it. */
+  change: number;
+  /** What it is measured against, e.g. "Oct" or "yesterday". */
+  vs: string;
+  lowerIsBetter: boolean;
+  /** "pts" for a percentage-point move; omitted for a plain count. */
+  suffix?: string;
+  decimals?: number;
+}
+
 export function Kpi({
   label,
   value,
   unit,
   tone = 'plain',
   title,
+  delta,
+  footnote,
 }: {
   label: string;
   value: string;
@@ -93,6 +111,10 @@ export function Kpi({
   tone?: Tone;
   /** Hover text for the whole tile — used to explain a value like "Not tracked". */
   title?: string;
+  /** Change vs the previous period, shown under the value. */
+  delta?: KpiDelta | null;
+  /** A standing note under the value, e.g. "Target 0.35%". */
+  footnote?: string;
 }) {
   const shown = useCountUp(value);
   return (
@@ -102,7 +124,29 @@ export function Kpi({
         {shown}
         {unit ? <small>{unit}</small> : null}
       </span>
+      {delta ? <KpiDeltaLine {...delta} /> : null}
+      {footnote ? <span className="kpi-footnote">{footnote}</span> : null}
     </div>
+  );
+}
+
+function KpiDeltaLine({ change, vs, lowerIsBetter, suffix, decimals = 0 }: KpiDelta) {
+  if (!isFinite(change)) return null;
+
+  const magnitude = Math.abs(change).toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+  const unchanged = Math.abs(change) < Math.pow(10, -decimals) / 2;
+  const better = lowerIsBetter ? change < 0 : change > 0;
+  const tone = unchanged ? 'flat' : better ? 'good' : 'bad';
+  const arrow = unchanged ? '→' : change > 0 ? '▲' : '▼';
+  const text = unchanged ? 'no change' : `${magnitude}${suffix ? ` ${suffix}` : ''}`;
+
+  return (
+    <span className={`kpi-delta kpi-delta-${tone}`}>
+      <span aria-hidden="true">{arrow}</span> {text} vs {vs}
+    </span>
   );
 }
 
