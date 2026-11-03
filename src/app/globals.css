@@ -377,38 +377,66 @@ code {
 }
 
 /*
- * The mark glows like a lit sign: a tight halo, a wide soft one, and a
- * bright inner rim. Three stacked shadows rather than a filter, so it costs
- * no extra compositing layer and the glyph itself stays crisp.
+ * Each company's real mark, lit like a neon sign.
+ *
+ * The glow is drop-shadow rather than box-shadow because box-shadow traces
+ * the element's BOX — on an image that means a glowing rectangle. drop-shadow
+ * traces the alpha channel instead, so the light follows the droplet and the
+ * cloud. That is what scripts/make-logo-alpha.mjs exists to make possible:
+ * both PNGs shipped on opaque white plates.
+ *
+ * Three stacked shadows per mark — a tight core, a mid halo and a wide
+ * bloom — each in that logo's OWN colour, since a real sign glows the colour
+ * of its own tube.
  */
 .brand-mark {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-  background: var(--brand);
-  color: var(--brand-on);
-  display: grid;
-  place-items: center;
-  font-weight: 800;
-  font-size: 17px;
   flex: none;
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--brand) 70%, transparent),
-    0 0 14px color-mix(in srgb, var(--brand) 65%, transparent),
-    0 0 38px color-mix(in srgb, var(--brand) 40%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.45);
-  animation: brandPulse 4.5s ease-in-out infinite;
+  height: 26px;
+  width: auto;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 0 3px rgba(var(--mark-glow), 0.9))
+    drop-shadow(0 0 10px rgba(var(--mark-glow), 0.65))
+    drop-shadow(0 0 24px rgba(var(--mark-glow), 0.4));
+  animation: markGlow 4.5s ease-in-out infinite;
+}
+
+.brand-mark-jl {
+  --mark-glow: 0, 195, 255;
+}
+
+.brand-mark-pc {
+  --mark-glow: 0, 148, 218;
 }
 
 /* A slow breath, so it reads as lit rather than as a static drop shadow. */
-@keyframes brandPulse {
+@keyframes markGlow {
   50% {
-    box-shadow:
-      0 0 0 1px color-mix(in srgb, var(--brand) 80%, transparent),
-      0 0 20px color-mix(in srgb, var(--brand) 80%, transparent),
-      0 0 52px color-mix(in srgb, var(--brand) 55%, transparent),
-      inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    filter:
+      drop-shadow(0 0 5px rgba(var(--mark-glow), 1))
+      drop-shadow(0 0 15px rgba(var(--mark-glow), 0.8))
+      drop-shadow(0 0 34px rgba(var(--mark-glow), 0.55));
   }
+}
+
+/*
+ * On white, a wide halo reads as a smudge rather than as light, so the
+ * outer two stages are pulled right back and the core does the work.
+ */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) .brand-mark {
+    filter:
+      drop-shadow(0 0 2px rgba(var(--mark-glow), 0.55))
+      drop-shadow(0 0 7px rgba(var(--mark-glow), 0.3));
+    animation: none;
+  }
+}
+
+:root[data-theme='light'] .brand-mark {
+  filter:
+    drop-shadow(0 0 2px rgba(var(--mark-glow), 0.55))
+    drop-shadow(0 0 7px rgba(var(--mark-glow), 0.3));
+  animation: none;
 }
 
 /* The wordmark picks up a trace of the same light. */
@@ -429,18 +457,6 @@ code {
 .brand-x {
   color: var(--muted);
   font-weight: 400;
-}
-
-.brand-chip {
-  background: var(--brand-soft);
-  color: var(--brand-ink);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  padding: 5px 10px;
-  border-radius: 6px;
-  white-space: nowrap;
 }
 
 .topbar-right {
@@ -2070,7 +2086,6 @@ tbody tr {
   .table-search {
     width: 100%;
   }
-  .brand-chip,
   .role-chip {
     display: none;
   }
@@ -2886,20 +2901,16 @@ tbody td {
     justify-self: end;
   }
 
+  /* Sized by HEIGHT so the tall droplet and the wide cloud read as the same
+     weight; each one's width follows its own aspect ratio. */
   .brand-mark {
-    width: 44px;
-    height: 44px;
-    border-radius: 13px;
-    font-size: 23px;
+    height: 36px;
+    width: auto;
   }
 
   .brand-text {
     font-size: 23px;
     letter-spacing: -0.015em;
-  }
-
-  .brand-chip {
-    /* Already said by the centred wordmark at this size. */
-    display: none;
+    gap: 11px;
   }
 }

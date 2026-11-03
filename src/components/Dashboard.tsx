@@ -280,18 +280,37 @@ export default function Dashboard({ role, roleLabel }: { role: Role; roleLabel: 
 
       <header className="topbar">
         <div className="topbar-inner">
+          {/*
+            Each company's own mark sits next to its own name. The images are
+            decorative — the names are right there in text — so they carry an
+            empty alt and are hidden from screen readers rather than being
+            announced twice. Width and height are set so the top bar doesn't
+            reflow as they load.
+          */}
           <div className="brand">
-            <span className="brand-mark" aria-hidden="true">
-              J
-            </span>
             <span className="brand-text">
+              <img
+                className="brand-mark brand-mark-jl"
+                src="/justlife-mark.png"
+                alt=""
+                width={273}
+                height={277}
+                aria-hidden="true"
+              />
               <b>Justlife</b>
               <span className="brand-x" aria-hidden="true">
                 ×
               </span>
+              <img
+                className="brand-mark brand-mark-pc"
+                src="/perfect-choice-mark.png"
+                alt=""
+                width={193}
+                height={182}
+                aria-hidden="true"
+              />
               <b className="brand-pc">Perfect Choice</b>
             </span>
-            <span className="brand-chip">Perfect Choice</span>
           </div>
 
           <div className="topbar-right">
