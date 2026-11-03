@@ -39,7 +39,7 @@ import {
 } from '@/lib/targets';
 import { downloadCsv, toCsv } from '@/lib/csv';
 import { Kpi, type KpiDelta } from '@/components/ui';
-import DayBarChart, { type DayDatum } from '@/components/DayBarChart';
+import MetricTrendChart from '@/components/MetricTrendChart';
 import {
   BanIcon,
   ClockIcon,
@@ -332,28 +332,7 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
     [data.companyPerf, data.canx, onTime, selectedCompany, month, data.today],
   );
 
-  const eventsChart: DayDatum[] = useMemo(
-    () =>
-      dailySeries
-        .filter((d) => d.absentCount > 0 || d.cancellationCount > 0)
-        .map((d) => ({
-          date: d.date,
-          values: { absent: d.absentCount, cancellations: d.cancellationCount },
-        })),
-    [dailySeries],
-  );
-
-  const onTimeChart: DayDatum[] = useMemo(
-    () =>
-      dailySeries
-        .filter((d) => d.onTimePct != null)
-        .map((d) => ({ date: d.date, values: { onTime: d.onTimePct as number } })),
-    [dailySeries],
-  );
-
   const chartSubtitle = `${formatMonthLabel(month)} \u00b7 ${selectedCompany ?? ''}`;
-  const pctAxis = (v: number) => Math.round(v) + '%';
-  const countAxis = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
 
   // Who was over threshold last month too. Weekly has no "previous month"
   // to compare against, so the tag only appears on the Monthly tab.
@@ -814,31 +793,12 @@ export default function CompanyPerformanceSection({ data }: { data: DashboardDat
             </div>
           </div>
 
-          {eventsChart.length ? (
-            <DayBarChart
-              title="Absences and cancellations per day"
-              subtitle={chartSubtitle}
-              series={[
-                { id: 'absent', label: 'Absent BD', colorVar: '--viz-notcollected' },
-                { id: 'cancellations', label: 'Cancellations', colorVar: '--viz-awaiting' },
-              ]}
-              data={eventsChart}
-              format={countAxis}
-              emptyLabel="Nothing recorded this month."
-            />
-          ) : null}
-
-          {onTimeChart.length ? (
-            <DayBarChart
-              title="On time % per day"
-              subtitle={chartSubtitle}
-              series={[{ id: 'onTime', label: 'On time', colorVar: '--viz-collected' }]}
-              data={onTimeChart}
-              format={pctAxis}
-              emptyLabel="No exclusive bookings this month."
-              reference={{ value: ON_TIME_PCT_TARGET, label: targetLabel(ON_TIME_PCT_TARGET) }}
-            />
-          ) : null}
+          <MetricTrendChart
+            title="Daily trend"
+            subtitle={chartSubtitle}
+            data={dailySeries}
+            emptyLabel="Nothing recorded for this month yet."
+          />
         </>
       ) : null}
 

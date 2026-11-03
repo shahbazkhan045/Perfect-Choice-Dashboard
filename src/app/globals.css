@@ -57,6 +57,12 @@
   --mesh-3: rgba(60, 110, 220, 0.12);
 
   /* Chart series — status-coded, always paired with a legend and a table. */
+  /* The three metrics of the daily trend chart. One hue each, checked for
+     colour-blind separation against both the light and dark chart surface. */
+  --viz-absent: #b06a22;
+  --viz-canx: #8a4fb5;
+  --viz-ontime: #1b86b8;
+
   --viz-collected: #16a34a;
   --viz-notcollected: #d03b3b;
   --viz-awaiting: #cbd5e1;
@@ -118,7 +124,15 @@
     --mesh-2: rgba(0, 88, 170, 0.32);
     --mesh-3: rgba(28, 60, 150, 0.24);
 
-    --viz-collected: #4ade80;
+    --viz-absent: #cc7c34;
+    --viz-canx: #a86cd4;
+    --viz-ontime: #1e9ed6;
+
+    --viz-absent: #cc7c34;
+  --viz-canx: #a86cd4;
+  --viz-ontime: #1e9ed6;
+
+  --viz-collected: #4ade80;
     --viz-notcollected: #e66767;
     --viz-awaiting: #4b505c;
     --viz-grid: #2b2e36;
@@ -2912,5 +2926,104 @@ tbody td {
     font-size: 23px;
     letter-spacing: -0.015em;
     gap: 11px;
+  }
+}
+
+/* ==========================================================================
+   Daily trend — metric switcher
+   Sits where the chart legend used to, because it does the legend's job:
+   it names the series and shows its colour. Only one metric is drawn at a
+   time, so each keeps its own axis and unit and no two measures ever share
+   a scale.
+   ========================================================================== */
+
+.metric-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 18px;
+  margin-top: 2px;
+}
+
+.metric-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 13px;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: var(--glass-bg-strong);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.metric-tab:hover:not(.is-active) {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--metric-color) 55%, transparent);
+}
+
+.metric-tab.is-active {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--metric-color) 70%, transparent);
+  background: color-mix(in srgb, var(--metric-color) 16%, transparent);
+}
+
+.metric-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--metric-color);
+  flex: none;
+}
+
+.metric-tab.is-active .metric-dot {
+  box-shadow: 0 0 10px var(--metric-color);
+}
+
+.metric-note {
+  padding: 0 18px;
+  margin: 8px 0 0;
+  font-size: 12.5px;
+}
+
+/* The worst day of the selected metric, direct-labelled. */
+.chart-worst {
+  fill: var(--text-2);
+  font-weight: 700;
+}
+
+/* The line is redrawn when the metric changes; a short fade keeps that from
+   being a jump. Neutralised by the reduced-motion block above. */
+.chart-trend {
+  animation: trendIn 0.35s ease both;
+}
+
+@keyframes trendIn {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .metric-switch,
+  .metric-note {
+    padding: 0 14px;
+  }
+  /* All three share the row equally rather than wrapping, which left the
+     longest one stranded on a second line at full width. */
+  .metric-switch {
+    gap: 5px;
+    flex-wrap: nowrap;
+  }
+  .metric-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    justify-content: center;
+    padding: 6px 8px;
+    font-size: 12px;
+    white-space: nowrap;
   }
 }
